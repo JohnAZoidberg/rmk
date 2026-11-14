@@ -87,3 +87,36 @@ fn direct_dispatch_preserves_fn_layer_press_and_release() {
         assert!(USB_REPORT_CHANNEL.is_empty());
     });
 }
+
+#[test]
+fn shift_number_chords_preserve_modifiers_and_release() {
+    rmk::test_support::test_block_on(async {
+        let mut data = KeymapData::new(keymap::default_keymap());
+        let mut behavior = BehaviorConfig::default();
+        let positional = PositionalConfig::default();
+        let keymap = initialize_keymap(&mut data, &mut behavior, &positional).await;
+        let mut keyboard = Keyboard::new(&keymap);
+        rmk::state::set_usb_state(UsbState::Configured);
+        for (row, col, modifier) in [(5, 7, 0x02), (7, 7, 0x20)] {
+            for (event, expected_mod, expected_key) in [
+                (KeyboardEvent::key(row, col, true), modifier, 0),
+                (KeyboardEvent::key(5, 1, true), modifier, 0x1e),
+                (KeyboardEvent::key(5, 1, false), modifier, 0),
+                (KeyboardEvent::key(row, col, false), 0, 0),
+            ] {
+                let mut sent = 0;
+                dispatch(&mut keyboard, event, |report| {
+                    let Report::KeyboardReport(report) = report else {
+                        panic!("expected keyboard report")
+                    };
+                    assert_eq!(report.modifier, expected_mod);
+                    assert_eq!(report.keycodes, [expected_key, 0, 0, 0, 0, 0]);
+                    sent += 1;
+                })
+                .await;
+                assert_eq!(sent, 1);
+                assert!(USB_REPORT_CHANNEL.is_empty());
+            }
+        }
+    });
+}

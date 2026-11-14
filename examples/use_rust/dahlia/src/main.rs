@@ -5,7 +5,7 @@ mod i2c;
 mod matrix;
 
 use embassy_executor::Spawner;
-use embassy_stm32::gpio::{Input, Level, Output, OutputOpenDrain, Pull, Speed};
+use embassy_stm32::gpio::{Flex, Input, Level, Output, OutputOpenDrain, Pull, Speed};
 use embassy_stm32::i2c::I2c;
 use embassy_stm32::{Config, rcc};
 use panic_halt as _;
@@ -44,24 +44,24 @@ async fn main(_spawner: Spawner) {
         Input::new(p.PB9, Pull::Down),
     ];
     let cols = [
-        Output::new(p.PA0, Level::Low, Speed::Low),
-        Output::new(p.PA1, Level::Low, Speed::Low),
-        Output::new(p.PA8, Level::Low, Speed::Low),
-        Output::new(p.PA2, Level::Low, Speed::Low),
-        Output::new(p.PA3, Level::Low, Speed::Low),
-        Output::new(p.PA4, Level::Low, Speed::Low),
-        Output::new(p.PA5, Level::Low, Speed::Low),
-        Output::new(p.PA6, Level::Low, Speed::Low),
-        Output::new(p.PA7, Level::Low, Speed::Low),
-        Output::new(p.PB0, Level::Low, Speed::Low),
-        Output::new(p.PB1, Level::Low, Speed::Low),
-        Output::new(p.PB2, Level::Low, Speed::Low),
-        Output::new(p.PB10, Level::Low, Speed::Low),
-        Output::new(p.PB11, Level::Low, Speed::Low),
-        Output::new(p.PB12, Level::Low, Speed::Low),
-        Output::new(p.PB13, Level::Low, Speed::Low),
-        Output::new(p.PB14, Level::Low, Speed::Low),
-        Output::new(p.PB15, Level::Low, Speed::Low),
+        Flex::new(p.PA0),
+        Flex::new(p.PA1),
+        Flex::new(p.PA8),
+        Flex::new(p.PA2),
+        Flex::new(p.PA3),
+        Flex::new(p.PA4),
+        Flex::new(p.PA5),
+        Flex::new(p.PA6),
+        Flex::new(p.PA7),
+        Flex::new(p.PB0),
+        Flex::new(p.PB1),
+        Flex::new(p.PB2),
+        Flex::new(p.PB10),
+        Flex::new(p.PB11),
+        Flex::new(p.PB12),
+        Flex::new(p.PB13),
+        Flex::new(p.PB14),
+        Flex::new(p.PB15),
     ];
     let mut data = KeymapData::new(keymap::default_keymap());
     let mut behavior = BehaviorConfig::default();

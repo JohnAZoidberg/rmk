@@ -1,4 +1,4 @@
-use embassy_stm32::gpio::{Input, Output};
+use embassy_stm32::gpio::{Flex, Input, Pull, Speed};
 use embassy_time::{Duration, Instant, Ticker};
 use rmk::event::KeyboardEvent;
 use rmk::keyboard::Keyboard;
@@ -8,7 +8,10 @@ use crate::ghost::ghosted;
 use crate::i2c;
 use crate::keymap::POSITIONS;
 
-pub async fn run(mut rows: [Input<'static>; 8], mut cols: [Output<'static>; 18], keyboard: &mut Keyboard<'_>) -> ! {
+pub async fn run(mut rows: [Input<'static>; 8], mut cols: [Flex<'static>; 18], keyboard: &mut Keyboard<'_>) -> ! {
+    for pin in &mut cols {
+        pin.set_as_input(Pull::None);
+    }
     let mut held = [[false; 18]; 8];
     let mut previous = [0u32; 8];
     let mut changed_at = [[Instant::now(); 18]; 8];
@@ -17,14 +20,16 @@ pub async fn run(mut rows: [Input<'static>; 8], mut cols: [Output<'static>; 18],
         let mut raw = [0u32; 8];
         if i2c::scanning() {
             for (col, pin) in cols.iter_mut().enumerate() {
+                // Inactive columns must float: this membrane has no diodes.
                 pin.set_high();
+                pin.set_as_output(Speed::Low);
                 cortex_m::asm::delay(80); // 5 us settling at HSI16.
                 for (row, input) in rows.iter_mut().enumerate() {
                     if input.is_high() {
                         raw[row] |= 1 << col;
                     }
                 }
-                pin.set_low();
+                pin.set_as_input(Pull::None);
             }
         }
         i2c::note_scan(raw);
