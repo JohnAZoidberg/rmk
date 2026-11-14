@@ -120,3 +120,54 @@ fn shift_number_chords_preserve_modifiers_and_release() {
         }
     });
 }
+
+#[test]
+fn fn_lock_reporting_tracks_toggle_and_temporary_unlock() {
+    rmk::test_support::test_block_on(async {
+        let mut data = KeymapData::new(keymap::default_keymap());
+        let mut behavior = BehaviorConfig::default();
+        let positional = PositionalConfig::default();
+        let keymap = initialize_keymap(&mut data, &mut behavior, &positional).await;
+        let mut keyboard = Keyboard::new(&keymap);
+        let mut protocol = crate::protocol::Protocol::new();
+        rmk::state::set_usb_state(UsbState::Configured);
+        for (row, col, pressed, locked) in [
+            (0, 16, true, false), // Fn alone is momentary, not locked.
+            (1, 1, true, false),  // RMK toggles on Escape release.
+            (1, 1, false, true),
+            (0, 16, false, true),
+            (0, 16, true, true), // Fn temporarily unlocks, preserving lock state.
+            (0, 16, false, true),
+            (0, 16, true, true),
+            (1, 1, true, true),   // Escape is held on the temporary-unlock layer.
+            (1, 1, false, false), // Toggle off while temporary-unlock layer is still active.
+            (0, 16, false, false),
+        ] {
+            dispatch(&mut keyboard, KeyboardEvent::key(row, col, pressed), |_| {}).await;
+            protocol.fn_lock = keymap.is_layer_active(2);
+            let mut request = [0u8; 36];
+            request[..6].copy_from_slice(&[6, 0, 34, 0, 0x20, 0x13]);
+            for bytes in [
+                &[5, 0, 0x3f, 3, 0x20, 6, 0][..],
+                &request[..],
+                &[5, 0, 0x3f, 2, 0x20, 6, 0][..],
+                &[6, 0][..],
+            ] {
+                protocol.start_write(0x15);
+                for &byte in bytes {
+                    protocol.receive(byte);
+                }
+                protocol.finish_write();
+            }
+            protocol.start_read(0x15);
+            assert_eq!(&protocol.response[..9], &[17, 0, 0x20, 0x13, 0, 1, 0, 0, 0]);
+            assert_eq!(
+                &protocol.response[9..13],
+                &u32::from(locked).to_le_bytes(),
+                "after ({row}, {col}), pressed={pressed}"
+            );
+            assert_eq!(&protocol.response[13..17], &[0; 4]);
+            protocol.finish_read(17);
+        }
+    });
+}

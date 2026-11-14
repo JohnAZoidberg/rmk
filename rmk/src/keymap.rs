@@ -618,7 +618,7 @@ impl<'a> KeyMap<'a> {
     ///
     /// Unlike [`Self::active_layer`] (which returns only the topmost), this
     /// reports each layer individually.
-    pub(crate) fn is_layer_active(&self, layer_num: u8) -> bool {
+    pub fn is_layer_active(&self, layer_num: u8) -> bool {
         let inner = self.inner.borrow();
         let idx = layer_num as usize;
         idx < inner.num_layer && inner.layer_state[idx]

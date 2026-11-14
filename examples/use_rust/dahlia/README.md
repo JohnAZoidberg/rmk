@@ -15,6 +15,8 @@ Implemented:
   releases held keys.
 - Vendor firmware/hardware info (`framework_tool --stm32-kbd-info`), including
   the RMK Git commit, dirty-build flag, chip ID, memory sizes, and factory UID.
+- Read-only Fn Lock reporting through the vendor flags command, including while
+  Fn temporarily unlocks the function row. Toggle it with Fn + Escape.
 - Caps Lock indicator on PC13, controlled by the EC's HID LED reports.
 - HID reset and state resynchronization; pending reports track the latest
   keyboard/media state so a slow EC cannot cause stale typing to replay.
@@ -56,7 +58,7 @@ sudo ./target/debug/framework_tool --flash-stm32-kbd /path/to/rmk/examples/use_r
 sudo ./target/debug/framework_tool --stm32-kbd-info
 ```
 
-The firmware reports version 1.2.5 and the first eight bytes of the RMK Git
+The firmware reports version 1.2.6 and the first eight bytes of the RMK Git
 commit. The dirty flag indicates local changes at build time. Unknown vendor
 commands return `0xff`; BIOS configuration and flag writes remain unsupported.
 

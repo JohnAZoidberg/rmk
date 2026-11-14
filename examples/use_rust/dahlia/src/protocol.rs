@@ -4,7 +4,7 @@ mod build_info {
     include!(concat!(env!("OUT_DIR"), "/build_info.rs"));
 }
 
-pub const FIRMWARE_VERSION: u16 = 0x0125;
+pub const FIRMWARE_VERSION: u16 = 0x0126;
 
 pub const REPORT_DESCRIPTOR: &[u8] = &[
     // Keyboard, report 1: modifiers, reserved byte, six keycodes; LED output.
@@ -84,6 +84,7 @@ const QUEUE_SIZE: usize = 2;
 pub struct Protocol {
     pub sovr: [u8; 3],
     pub leds: u8,
+    pub fn_lock: bool,
     queue: [Packet; QUEUE_SIZE],
     head: usize,
     count: usize,
@@ -122,6 +123,7 @@ impl Protocol {
         Self {
             sovr: [255; 3],
             leds: 0,
+            fn_lock: false,
             queue: [EMPTY; QUEUE_SIZE],
             head: 0,
             count: 0,
@@ -270,6 +272,13 @@ impl Protocol {
                                 self.vendor[5..23].copy_from_slice(&self.hardware_info);
                                 23
                             }
+                            0x13 => {
+                                // Fn Lock is supported for reporting only.
+                                self.vendor[5..9].copy_from_slice(&1u32.to_le_bytes());
+                                self.vendor[9..13].copy_from_slice(&u32::from(self.fn_lock).to_le_bytes());
+                                // Writable mask remains zero.
+                                17
+                            }
                             _ => {
                                 self.vendor[4] = 0xff;
                                 5
@@ -393,7 +402,7 @@ mod tests {
     #[test]
     fn descriptors_match_wire_lengths_and_board_identity() {
         assert_eq!(HID_DESCRIPTOR[4] as usize, REPORT_DESCRIPTOR.len());
-        assert_eq!(&HID_DESCRIPTOR[20..26], &[0xac, 0x32, 0x38, 0, 0x25, 1]);
+        assert_eq!(&HID_DESCRIPTOR[20..26], &[0xac, 0x32, 0x38, 0, 0x26, 1]);
         let mut p = Protocol::new();
         write(&mut p, 0x15, &[1, 0]);
         p.start_read(0x15);
@@ -703,13 +712,25 @@ mod vendor_tests {
     }
 
     #[test]
+    fn flags_query_reports_fn_lock_as_read_only_and_off_at_boot() {
+        let mut p = Protocol::new();
+        request(&mut p, 0x13);
+        read_reply(&mut p);
+        assert_eq!(p.response_len, 17);
+        assert_eq!(
+            &p.response[..17],
+            &[17, 0, 0x20, 0x13, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+        );
+    }
+
+    #[test]
     fn unknown_vendor_command_is_reported_without_changing_input_or_leds() {
         let mut p = Protocol::new();
         p.enqueue(Packet::new(1, &[2, 0, 0x1e, 0, 0, 0, 0, 0]));
         write(&mut p, &[4, 0, 4, 0, 1, 2]);
-        request(&mut p, 0x13);
+        request(&mut p, 0x12);
         read_reply(&mut p);
-        assert_eq!(&p.response[..5], &[5, 0, 0x20, 0x13, 0xff]);
+        assert_eq!(&p.response[..5], &[5, 0, 0x20, 0x12, 0xff]);
         assert!(!p.finish_read(17));
         assert!(p.pending());
         assert!(p.caps_lock_led());

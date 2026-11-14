@@ -207,11 +207,12 @@ pub fn submit_report(report: Report) {
     });
 }
 
-pub async fn run() -> ! {
+pub async fn run(keymap: &rmk::keymap::KeyMap<'_>) -> ! {
     loop {
         critical_section::with(|cs| {
             let mut guard = BUS.borrow(cs).borrow_mut();
             let bus = guard.as_mut().unwrap();
+            bus.protocol.fn_lock = keymap.is_layer_active(2);
             if bus.protocol.pending() && !bus.reading && Instant::now() >= bus.rearm_at {
                 bus.irq.set_low();
             }

@@ -71,5 +71,5 @@ async fn main(_spawner: Spawner) {
     // Reuse RMK's wired report queue; no USB peripheral is present on Dahlia.
     rmk::state::set_usb_state(UsbState::Configured);
     // This layout has plain keys and layer actions, with no timed behaviors.
-    embassy_futures::join::join(matrix::run(rows, cols, &mut keyboard), i2c::run()).await;
+    embassy_futures::join::join(matrix::run(rows, cols, &mut keyboard), i2c::run(&keymap)).await;
 }
