@@ -1,5 +1,6 @@
 #![no_main]
 #![no_std]
+mod factory;
 #[cfg(feature = "ansi")]
 #[path = "ansi.rs"]
 mod keymap;
@@ -138,7 +139,9 @@ async fn main(_spawner: Spawner) {
     // Initialize the matrix + keyboard
     let mut keyboard = Keyboard::new(&keymap);
 
-    let mut usb_transport = UsbTransport::new(driver, rmk_config.device_config);
+    let mut usb_builder = UsbTransport::builder(driver, rmk_config.device_config);
+    let mut factory_hid = factory::FactoryHid::new(usb_builder.usb_builder());
+    let mut usb_transport = usb_builder.build();
     let mut wpm_processor = WpmProcessor::new();
 
     let mut watchdog_runner =
@@ -165,6 +168,7 @@ async fn main(_spawner: Spawner) {
         matrix,
         storage,
         usb_transport,
+        factory_hid,
         wpm_processor,
         keyboard,
         watchdog_runner,

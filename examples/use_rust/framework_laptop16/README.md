@@ -39,9 +39,37 @@ area; it does not migrate it.
 
 This is a keyboard-input port pending physical hardware validation. Backlights
 and the IS31FL3743A RGB controller are held off. Lighting actions and airplane
-mode are unassigned. Framework factory/BIOS vendor commands, factory serial
+mode are unassigned. Framework factory/BIOS vendor commands other than the
+bootloader command, factory serial
 number descriptors, automatic BIOS hotkey-mode switching, and Vial are not
 implemented. USB uses RMK's chip-derived serial number. GPIO0 gating is
 implemented, but lid and USB suspend/wake behavior needs hardware verification.
 The analog settling interval and simultaneous-key thresholds also need testing
 on each physical module.
+
+## Automated bootloader entry
+
+The QMK-compatible raw HID interface uses usage page `0xFF60`, usage `0x61`,
+with 32-byte reports and no report IDs. Send `0x0B, 0xFE` followed by 30 zero
+bytes to enter the RP2040 USB ROM bootloader. As in QMK, there is no reply;
+the module disconnects and reappears as `RPI-RP2`. Other commands are ignored.
+
+For example, using Python's `hidapi` package (select the PID for your module):
+
+```python
+import hid
+
+pid = 0x0012  # keyboard; numpad: 0x0014; macropad: 0x0013
+interface = next(d for d in hid.enumerate(0x32AC, pid)
+                 if d["usage_page"] == 0xFF60 and d["usage"] == 0x61)
+device = hid.device()
+device.open_path(interface["path"])
+try:
+    device.write(bytes([0x00, 0x0B, 0xFE]) + bytes(30))
+finally:
+    device.close()
+```
+
+The leading `0x00` is the report-ID placeholder required by hidapi; it is not
+part of the 32-byte USB report. On Linux the raw HID device must be accessible
+to the testing user through the system's udev permissions.

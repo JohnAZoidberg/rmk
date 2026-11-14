@@ -1828,9 +1828,11 @@ dependencies = [
  "embassy-executor",
  "embassy-rp",
  "embassy-time",
+ "embassy-usb",
  "panic-probe",
  "portable-atomic",
  "rmk",
+ "static_cell",
 ]
 
 [[package]]
