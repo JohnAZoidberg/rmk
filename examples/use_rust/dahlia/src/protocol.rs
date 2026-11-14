@@ -1,5 +1,11 @@
 //! Dahlia HID-over-I2C framing and the EC's IT8801 register interface.
 
+mod build_info {
+    include!(concat!(env!("OUT_DIR"), "/build_info.rs"));
+}
+
+pub const FIRMWARE_VERSION: u16 = 0x0125;
+
 pub const REPORT_DESCRIPTOR: &[u8] = &[
     // Keyboard, report 1: modifiers, reserved byte, six keycodes; LED output.
     0x05, 0x01, 0x09, 0x06, 0xa1, 0x01, 0x85, 0x01, 0x05, 0x07, 0x19, 0xe0, 0x29, 0xe7, 0x15, 0x00, 0x25, 0x01, 0x75,
@@ -8,7 +14,9 @@ pub const REPORT_DESCRIPTOR: &[u8] = &[
     0x95, 0x05, 0x91, 0x02, 0x75, 0x03, 0x95, 0x01, 0x91, 0x01,
     0xc0, // Consumer control, report 2: one 16-bit usage.
     0x05, 0x0c, 0x09, 0x01, 0xa1, 0x01, 0x85, 0x02, 0x19, 0x00, 0x2a, 0xff, 0x03, 0x15, 0x00, 0x26, 0xff, 0x03, 0x75,
-    0x10, 0x95, 0x01, 0x81, 0x00, 0xc0,
+    0x10, 0x95, 0x01, 0x81, 0x00, 0xc0, // Vendor Feature report 0x20: 31 opaque command/response bytes.
+    0x06, 0x00, 0xff, 0x09, 0x03, 0xa1, 0x01, 0x85, 0x20, 0x15, 0x00, 0x26, 0xff, 0x00, 0x75, 0x08, 0x95, 0x1f, 0xb2,
+    0x02, 0x01, 0xc0,
 ];
 
 pub const HID_DESCRIPTOR: [u8; 30] = [
@@ -26,7 +34,7 @@ pub const HID_DESCRIPTOR: [u8; 30] = [
     0,
     4,
     0,
-    4,
+    36,
     0,
     5,
     0,
@@ -36,8 +44,8 @@ pub const HID_DESCRIPTOR: [u8; 30] = [
     0x32,
     0x38,
     0,
-    0x24,
-    1,
+    FIRMWARE_VERSION as u8,
+    (FIRMWARE_VERSION >> 8) as u8,
     // Engineering firmware: ask BIOS to leave this image installed.
     1,
     0,
@@ -82,6 +90,9 @@ pub struct Protocol {
     keyboard: Packet,
     media: Packet,
     data: Packet,
+    vendor: [u8; 34],
+    vendor_selected: bool,
+    pub hardware_info: [u8; 18],
     reset: bool,
     register: u16,
     io_register: u8,
@@ -117,6 +128,9 @@ impl Protocol {
             keyboard: KEY_UP,
             media: MEDIA_UP,
             data: EMPTY,
+            vendor: [0; 34],
+            vendor_selected: false,
+            hardware_info: [0; 18],
             reset: false,
             register: 3,
             io_register: 0,
@@ -225,6 +239,7 @@ impl Protocol {
                     self.register = 3;
                 }
                 2 => {
+                    self.vendor_selected = n >= 7 && self.write[2] == 0x3f && self.write[4] == 0x20;
                     let packet = match self.write[2] & 15 {
                         1 => self.keyboard,
                         2 => self.media,
@@ -233,11 +248,35 @@ impl Protocol {
                     self.data = packet;
                     self.register = 6;
                 }
-                // SET_REPORT and SET_POWER need no board action for basic typing.
-                _ => {}
+                // The SET_REPORT payload arrives in a separate data-register write.
+                _ => self.register = 3,
             },
             4 | 6 if n > 2 => {
-                if n >= 6 && self.write[4] == 1 {
+                if self.register == 6 && n >= 6 && self.write[4] == 0x20 {
+                    let length = u16::from_le_bytes([self.write[2], self.write[3]]) as usize;
+                    if (4..=34).contains(&length) && length + 2 == n {
+                        self.vendor = [0; 34];
+                        let opcode = self.write[5];
+                        self.vendor[2] = 0x20;
+                        self.vendor[3] = opcode;
+                        self.vendor[0] = match opcode {
+                            1 => {
+                                self.vendor[5..7].copy_from_slice(&FIRMWARE_VERSION.to_le_bytes());
+                                self.vendor[7] = build_info::GIT_DIRTY;
+                                self.vendor[8..16].copy_from_slice(&build_info::GIT_HASH);
+                                16
+                            }
+                            2 => {
+                                self.vendor[5..23].copy_from_slice(&self.hardware_info);
+                                23
+                            }
+                            _ => {
+                                self.vendor[4] = 0xff;
+                                5
+                            }
+                        };
+                    }
+                } else if n >= 6 && self.write[4] == 1 {
                     self.leds = self.write[5];
                 }
                 // Output payloads do not select a register for the next bare
@@ -301,6 +340,7 @@ impl Protocol {
                     &[2, 0]
                 }
             }
+            6 if self.vendor_selected => &self.vendor[..self.vendor[0] as usize],
             6 => &self.data.bytes[..self.data.len],
             _ => &[0, 0],
         };
@@ -353,7 +393,7 @@ mod tests {
     #[test]
     fn descriptors_match_wire_lengths_and_board_identity() {
         assert_eq!(HID_DESCRIPTOR[4] as usize, REPORT_DESCRIPTOR.len());
-        assert_eq!(&HID_DESCRIPTOR[20..26], &[0xac, 0x32, 0x38, 0, 0x24, 1]);
+        assert_eq!(&HID_DESCRIPTOR[20..26], &[0xac, 0x32, 0x38, 0, 0x25, 1]);
         let mut p = Protocol::new();
         write(&mut p, 0x15, &[1, 0]);
         p.start_read(0x15);
@@ -577,5 +617,103 @@ mod caps_lock_tests {
             p.finish_read(11);
             assert!(!p.pending());
         }
+    }
+}
+
+#[cfg(test)]
+mod vendor_tests {
+    use super::*;
+
+    fn write(p: &mut Protocol, bytes: &[u8]) {
+        p.start_write(0x15);
+        for &byte in bytes {
+            p.receive(byte);
+        }
+        p.finish_write();
+    }
+
+    fn request(p: &mut Protocol, opcode: u8) {
+        write(p, &[5, 0, 0x3f, 3, 0x20, 6, 0]);
+        let mut bytes = [0; 36];
+        bytes[..6].copy_from_slice(&[6, 0, 34, 0, 0x20, opcode]);
+        write(p, &bytes);
+    }
+
+    fn read_reply(p: &mut Protocol) {
+        write(p, &[5, 0, 0x3f, 2, 0x20, 6, 0]);
+        write(p, &[6, 0]);
+        p.start_read(0x15);
+    }
+
+    #[test]
+    fn framework_tool_firmware_query_returns_version_and_commit() {
+        let mut p = Protocol::new();
+        request(&mut p, 1);
+        read_reply(&mut p);
+        assert_eq!(p.response_len, 16);
+        assert_eq!(&p.response[..5], &[16, 0, 0x20, 1, 0]);
+        assert_eq!(&p.response[5..7], &HID_DESCRIPTOR[24..26]);
+        assert!(p.response[7] <= 1);
+        assert_ne!(&p.response[8..16], &[0; 8]);
+    }
+
+    #[test]
+    fn hardware_query_returns_chip_memory_and_unique_id() {
+        let mut p = Protocol::new();
+        p.hardware_info = [0x89, 0x04, 64, 0, 40, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+        request(&mut p, 2);
+        read_reply(&mut p);
+        assert_eq!(p.response_len, 23);
+        assert_eq!(&p.response[..5], &[23, 0, 0x20, 2, 0]);
+        assert_eq!(&p.response[5..23], &p.hardware_info);
+    }
+
+    #[test]
+    fn key_and_led_transactions_between_vendor_set_and_get_preserve_reply() {
+        let mut p = Protocol::new();
+        request(&mut p, 1);
+        p.enqueue(Packet::new(1, &[2, 0, 0x1e, 0, 0, 0, 0, 0]));
+        p.start_read(0x15);
+        assert_eq!(&p.response[..6], &[11, 0, 1, 2, 0, 0x1e]);
+        p.finish_read(11);
+        write(&mut p, &[4, 0, 4, 0, 1, 0]);
+        read_reply(&mut p);
+        assert_eq!(&p.response[..5], &[16, 0, 0x20, 1, 0]);
+        p.finish_read(16);
+        p.enqueue(KEY_UP);
+        p.start_read(0x15);
+        assert_eq!(&p.response[..11], &KEY_UP.bytes);
+    }
+
+    #[test]
+    fn malformed_vendor_lengths_do_not_execute_or_redirect_input() {
+        for length in [0, 3, 33, 35, 0xffff] {
+            let mut p = Protocol::new();
+            request(&mut p, 1);
+            let mut bytes = [0; 36];
+            bytes[..6].copy_from_slice(&[6, 0, length as u8, (length >> 8) as u8, 0x20, 2]);
+            write(&mut p, &bytes);
+            p.enqueue(KEY_UP);
+            p.start_read(0x15);
+            assert_eq!(&p.response[..11], &KEY_UP.bytes);
+            p.finish_read(11);
+            read_reply(&mut p);
+            assert_eq!(&p.response[..5], &[16, 0, 0x20, 1, 0]);
+        }
+    }
+
+    #[test]
+    fn unknown_vendor_command_is_reported_without_changing_input_or_leds() {
+        let mut p = Protocol::new();
+        p.enqueue(Packet::new(1, &[2, 0, 0x1e, 0, 0, 0, 0, 0]));
+        write(&mut p, &[4, 0, 4, 0, 1, 2]);
+        request(&mut p, 0x13);
+        read_reply(&mut p);
+        assert_eq!(&p.response[..5], &[5, 0, 0x20, 0x13, 0xff]);
+        assert!(!p.finish_read(17));
+        assert!(p.pending());
+        assert!(p.caps_lock_led());
+        p.start_read(0x15);
+        assert_eq!(&p.response[..6], &[11, 0, 1, 2, 0, 0x1e]);
     }
 }

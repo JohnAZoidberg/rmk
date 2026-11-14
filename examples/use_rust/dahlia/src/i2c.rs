@@ -23,9 +23,22 @@ struct Bus {
 static BUS: Mutex<RefCell<Option<Bus>>> = Mutex::new(RefCell::new(None));
 
 pub fn init(irq: OutputOpenDrain<'static>, touchpad: Output<'static>, caps_led: Output<'static>) {
+    let mut protocol = Protocol::new();
+    // DBGMCU's ID register is only accessible while its clock is enabled.
+    let debug_enabled = pac::RCC.dbgcfgr().read().dbgen();
+    pac::RCC.dbgcfgr().modify(|w| w.set_dbgen(true));
+    let _ = pac::RCC.dbgcfgr().read();
+    let chip_id = pac::DBGMCU.idcode().read().dev_id();
+    pac::RCC.dbgcfgr().modify(|w| w.set_dbgen(debug_enabled));
+    // STM32U073 factory FLASHSIZE register, in KiB.
+    let flash_kb = unsafe { core::ptr::read_volatile(0x1fff_6ea0 as *const u16) };
+    protocol.hardware_info[..2].copy_from_slice(&chip_id.to_le_bytes());
+    protocol.hardware_info[2..4].copy_from_slice(&flash_kb.to_le_bytes());
+    protocol.hardware_info[4..6].copy_from_slice(&40u16.to_le_bytes());
+    protocol.hardware_info[6..].copy_from_slice(&embassy_stm32::uid::uid());
     critical_section::with(|cs| {
         *BUS.borrow(cs).borrow_mut() = Some(Bus {
-            protocol: Protocol::new(),
+            protocol,
             irq,
             touchpad,
             caps_led,

@@ -13,6 +13,8 @@ Implemented:
 - IT8801 identification/register emulation at `0x38`; SOVR(2) bit 0 controls
   touchpad enable (PA15), bit 2 controls keyboard scanning. Disabling scanning
   releases held keys.
+- Vendor firmware/hardware info (`framework_tool --stm32-kbd-info`), including
+  the RMK Git commit, dirty-build flag, chip ID, memory sizes, and factory UID.
 - Caps Lock indicator on PC13, controlled by the EC's HID LED reports.
 - HID reset and state resynchronization; pending reports track the latest
   keyboard/media state so a slow EC cannot cause stale typing to replay.
@@ -34,11 +36,11 @@ cd examples/use_rust/dahlia
 cargo build --release
 ```
 
-The ELF is `target/thumbv6m-none-eabi/release/rmk-dahlia`. To also produce a raw
-binary, run:
+The ELF is `target/thumbv6m-none-eabi/release/rmk-dahlia`. To produce flash images, run:
 
 ```sh
-cargo objcopy --release -- -O binary dahlia.bin
+cargo objcopy --release --bin rmk-dahlia -- -O ihex dahlia.hex
+cargo objcopy --release --bin rmk-dahlia -- -O binary dahlia.bin
 ```
 
 The linker limits code to `0x08000000..0x0800DFBF`, preserving the ZMK layout's
@@ -47,7 +49,18 @@ ZMK's stored settings.
 
 ## Flash and bring up
 
-Connect an SWD probe and run from this directory:
+From the `framework-system` checkout, flash the HEX and query the running image:
+
+```sh
+sudo ./target/debug/framework_tool --flash-stm32-kbd /path/to/rmk/examples/use_rust/dahlia/dahlia.hex
+sudo ./target/debug/framework_tool --stm32-kbd-info
+```
+
+The firmware reports version 1.2.5 and the first eight bytes of the RMK Git
+commit. The dirty flag indicates local changes at build time. Unknown vendor
+commands return `0xff`; BIOS configuration and flag writes remain unsupported.
+
+Alternatively, connect an SWD probe and run from this directory:
 
 ```sh
 probe-rs download --chip STM32U073C8 target/thumbv6m-none-eabi/release/rmk-dahlia
@@ -76,4 +89,5 @@ cargo nextest run --lib --target x86_64-unknown-linux-gnu
 
 These tests exercise the production dispatch path (immediate key reports and Fn
 layer release), HID descriptors, slow-host coalescing, partial reads, reset
-resynchronization, IT8801 controls, and ghost rectangles without an MCU.
+resynchronization, vendor info transactions, IT8801 controls, and ghost rectangles
+without an MCU.
