@@ -42,7 +42,8 @@ impl<D: Driver<'static>> Runnable for FactoryHid<D> {
         loop {
             let mut report = [0u8; 32];
             match self.hid.read(&mut report).await {
-                Ok(32) if report[..2] == [0x0b, 0xfe] => rmk::boot::jump_to_bootloader(),
+                // qmk_hid includes the report-ID placeholder in its 32-byte write.
+                Ok(31 | 32) if report[..2] == [0x0b, 0xfe] => rmk::boot::jump_to_bootloader(),
                 Ok(_) => {}
                 Err(_) => {
                     // A disabled endpoint can fail immediately while USB is disconnected.
