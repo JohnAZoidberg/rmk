@@ -7,7 +7,7 @@ mod build_info {
 pub const FLAGS_PRESENT: u32 = 0x0f;
 pub const FLAGS_WRITABLE: u32 = 3;
 
-pub const FIRMWARE_VERSION: u16 = 0x0127;
+pub const FIRMWARE_VERSION: u16 = 0x0128;
 
 pub const REPORT_DESCRIPTOR: &[u8] = &[
     // Keyboard, report 1: modifiers, reserved byte, six keycodes; LED output.
@@ -366,6 +366,11 @@ impl Protocol {
         }
     }
 
+    /// Register selection lasts only for the current combined I2C transaction.
+    pub fn stop(&mut self) {
+        self.register = 3;
+    }
+
     pub fn start_read(&mut self, address: u8) {
         self.reading_input = false;
         self.read_address = address;
@@ -473,6 +478,56 @@ mod tests {
         p.finish_write();
     }
     #[test]
+    fn info_query_does_not_steal_enter_release_between_vendor_transactions() {
+        for opcode in [1, 2, 0x13] {
+            for interrupt_after in 0..3 {
+                let mut p = Protocol::new();
+                // The shell has received the Enter that launched framework_tool.
+                p.enqueue(Packet::new(1, &[0, 0, 0x28, 0, 0, 0, 0, 0]));
+                p.start_read(0x15);
+                assert_eq!(p.response[5], 0x28);
+                assert!(p.finish_read(11));
+                p.stop();
+
+                let mut payload = [0; 36];
+                payload[..6].copy_from_slice(&[6, 0, 34, 0, 0x20, opcode]);
+                for (step, bytes) in [
+                    &[5, 0, 0x3f, 3, 0x20, 6, 0][..],
+                    &payload[..],
+                    &[5, 0, 0x3f, 2, 0x20, 6, 0][..],
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    write(&mut p, 0x15, bytes);
+                    p.stop();
+                    if step == interrupt_after {
+                        // A normal EC input read can run in any command delay.
+                        p.enqueue(KEY_UP);
+                        p.start_read(0x15);
+                        assert_eq!(
+                            &p.response[..p.response_len],
+                            &KEY_UP.bytes,
+                            "opcode {opcode:#x}, interrupted after step {step}"
+                        );
+                        assert!(p.finish_read(11));
+                        p.stop();
+                        assert!(!p.pending());
+                    }
+                }
+
+                // The tool explicitly addresses DATA in its combined write/read.
+                write(&mut p, 0x15, &[6, 0]);
+                p.start_read(0x15);
+                assert_eq!(&p.response[2..5], &[0x20, opcode, 0]);
+                assert!(!p.finish_read(p.response_len));
+                p.stop();
+                assert!(!p.pending());
+            }
+        }
+    }
+
+    #[test]
     fn touchpad_shortcut_requires_fn_left_alt_and_a_new_t_press() {
         let mut p = Protocol::new();
         let t = Packet::new(1, &[4, 0, 0x17, 0, 0, 0, 0, 0]);
@@ -515,7 +570,7 @@ mod tests {
     #[test]
     fn descriptors_match_wire_lengths_and_board_identity() {
         assert_eq!(HID_DESCRIPTOR[4] as usize, REPORT_DESCRIPTOR.len());
-        assert_eq!(&HID_DESCRIPTOR[20..26], &[0xac, 0x32, 0x38, 0, 0x27, 1]);
+        assert_eq!(&HID_DESCRIPTOR[20..26], &[0xac, 0x32, 0x38, 0, 0x28, 1]);
         let mut p = Protocol::new();
         write(&mut p, 0x15, &[1, 0]);
         p.start_read(0x15);

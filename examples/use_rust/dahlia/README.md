@@ -71,7 +71,7 @@ sudo ./target/debug/framework_tool --flash-stm32-kbd /path/to/rmk/examples/use_r
 sudo ./target/debug/framework_tool --stm32-kbd-info
 ```
 
-The firmware reports version 1.2.7 and the first eight bytes of the RMK Git
+The firmware reports version 1.2.8 and the first eight bytes of the RMK Git
 commit. The dirty flag indicates local changes at build time. Unknown vendor
 commands return `0xff`. Vendor commands `0x10`/`0x11` set/read Fn/Ctrl swap;
 `0x12`/`0x13` write/read flags. Bits 0 (Fn Lock) and 1 (swap) are writable;
@@ -137,8 +137,10 @@ and misc-flags. Test persistence with a reset or deck power cycle, without
 reflashing between checks.
 
 1. Flash the normal image and run `framework_tool --stm32-kbd-info`. Expect
-   version 1.2.7, the build's commit hash, chip ID `0x0489`, 64 KiB flash,
+   version 1.2.8, the build's commit hash, chip ID `0x0489`, 64 KiB flash,
    40 KiB RAM, and do-not-update enabled. Check typing and modifier chords.
+   Run the info command repeatedly using Enter, then confirm Enter releases and
+   typing continues normally; the vendor query must not strand keyboard input.
 2. Toggle Fn Lock with Fn+Esc, confirm the reported state, then run
    `framework_tool --stm32-kbd-reset`. Confirm Fn Lock remains on and one
    Fn+Esc chord turns it off. Repeat with a full deck power cycle.

@@ -180,6 +180,9 @@ fn I2C1() {
             bus.finish_read();
             bus.finish_write();
         }
+        if status.stopf() {
+            bus.protocol.stop();
+        }
         if status.nackf() || status.stopf() || status.addr() {
             regs.cr1().modify(|w| w.set_txie(false));
             // Flush any unconsumed prefetch before the next transaction.
