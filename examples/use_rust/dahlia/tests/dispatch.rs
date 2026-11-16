@@ -231,3 +231,37 @@ fn media_launch_sends_full_consumer_usage_and_fn_sends_f12() {
         .await;
     });
 }
+
+#[cfg(feature = "iso")]
+#[test]
+fn iso_extra_keys_send_hid_usages_on_all_layers() {
+    rmk::test_support::test_block_on(async {
+        let mut data = KeymapData::new(keymap::default_keymap());
+        let mut behavior = BehaviorConfig::default();
+        let positional = PositionalConfig::default();
+        let keymap = initialize_keymap(&mut data, &mut behavior, &positional).await;
+        let mut keyboard = Keyboard::new(&keymap);
+        rmk::state::set_usb_state(UsbState::Configured);
+        assert_eq!(keymap::POSITIONS.len(), 79);
+        assert!(!keymap::POSITIONS.contains(&(3, 11)));
+        for layer in 0..4 {
+            keymap.set_layer_active(layer, true);
+            for (row, expected) in [(6, 0x32), (7, 0x64)] {
+                assert!(keymap::POSITIONS.contains(&(row, 17)));
+                for pressed in [true, false] {
+                    let mut reports = 0;
+                    dispatch(&mut keyboard, KeyboardEvent::key(row as u8, 17, pressed), |report| {
+                        let Report::KeyboardReport(report) = report else {
+                            panic!("expected ISO key")
+                        };
+                        assert_eq!(report.keycodes[0], if pressed { expected } else { 0 });
+                        reports += 1;
+                    })
+                    .await;
+                    assert_eq!(reports, 1);
+                }
+            }
+            keymap.set_layer_active(layer, false);
+        }
+    });
+}

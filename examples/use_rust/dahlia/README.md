@@ -1,14 +1,15 @@
-# Dahlia (Framework 12 ANSI)
+# Dahlia (Framework 12 ANSI / ISO)
 
 Minimal RMK firmware for the **DVT/MP Dahlia touchpad module**, STM32U073C8.
 The matrix pins and key positions come from the Dahlia/Framework 12 ANSI
-ZMK board files. This build does not support the EVT pinout or ISO layouts.
+ZMK board files. The EVT pinout is not supported. ANSI is the default; build with
+`--features iso` for the stock ISO matrix and extra keys.
 
 Implemented:
 
 - 8 × 18 active-high matrix, 1 ms press / 5 ms release debounce, ghost suppression.
 - Inactive scan columns float to support chords on the diodeless membrane.
-- ANSI typing, media/brightness keys, Fn navigation, persistent Fn lock.
+- ANSI or ISO typing, media/brightness keys, Fn navigation, persistent Fn lock.
 - HID over I²C at `0x15`, IRQ on PA12 (open drain), PB6/PB7 at up to 1 MHz.
 - IT8801 identification/register emulation at `0x38`; SOVR(2) bit 0 controls
   touchpad enable (PA15), bit 2 controls keyboard scanning. Disabling scanning

@@ -41,7 +41,7 @@ pub async fn run(
         }
         i2c::note_scan(raw);
         let now = Instant::now();
-        for &(row, col) in &POSITIONS {
+        for &(row, col) in POSITIONS {
             let pressed = raw[row] & (1 << col) != 0;
             if (previous[row] ^ raw[row]) & (1 << col) != 0 {
                 changed_at[row][col] = now;

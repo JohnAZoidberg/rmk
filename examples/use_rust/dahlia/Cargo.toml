@@ -9,6 +9,10 @@ name = "rmk-dahlia"
 test = false
 bench = false
 
+[features]
+default = []
+iso = []
+
 [dependencies]
 rmk = { path = "../../../rmk", default-features = false }
 embassy-futures = "0.1"

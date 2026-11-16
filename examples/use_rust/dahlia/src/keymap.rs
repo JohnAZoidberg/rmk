@@ -7,7 +7,7 @@ use rmk::types::modifier::ModifierCombination;
 use rmk::{a, k, mo, tg, wm};
 
 #[rustfmt::skip]
-pub const POSITIONS: [(usize, usize); 78] = [
+const ANSI_POSITIONS: [(usize, usize); 78] = [
     (1, 1), (0, 2), (3, 2), (2, 2), (1, 2), (4, 4), (2, 4), (1, 4), (2, 11), (1, 9), (0, 4), (0, 1), (1, 5), (2, 9),
     (3, 1), (5, 1), (6, 4), (6, 2), (6, 3), (3, 3), (3, 8), (6, 8), (6, 5), (6, 9), (6, 6), (3, 6), (0, 8), (1, 11),
     (2, 1), (7, 5), (7, 6), (7, 8), (7, 9), (2, 3), (2, 6), (7, 1), (7, 2), (7, 3), (7, 4), (2, 8), (2, 5), (3, 11),
@@ -16,6 +16,29 @@ pub const POSITIONS: [(usize, usize); 78] = [
     (1, 14), (0, 16), (3, 0), (6, 13), (5, 6), (0, 10), (3, 14), (7, 12), (7, 11), (6, 12),
     (6, 11),
 ];
+
+const ISO_POSITIONS: [(usize, usize); 79] = {
+    let mut positions = [(0, 0); 79];
+    let mut source = 0;
+    let mut target = 0;
+    while source < ANSI_POSITIONS.len() {
+        let position = ANSI_POSITIONS[source];
+        if position.0 != 3 || position.1 != 11 {
+            positions[target] = position;
+            target += 1;
+        }
+        source += 1;
+    }
+    positions[77] = (6, 17);
+    positions[78] = (7, 17);
+    positions
+};
+
+pub const POSITIONS: &[(usize, usize)] = if cfg!(feature = "iso") {
+    &ISO_POSITIONS
+} else {
+    &ANSI_POSITIONS
+};
 
 #[rustfmt::skip]
 const LAYERS: [[KeyAction; 78]; 4] = [
@@ -66,12 +89,25 @@ pub const fn default_keymap() -> [[[KeyAction; 18]; 8]; 4] {
     let mut layer = 0;
     while layer < LAYERS.len() {
         let mut key = 0;
-        while key < POSITIONS.len() {
-            let (row, col) = POSITIONS[key];
+        while key < ANSI_POSITIONS.len() {
+            let (row, col) = ANSI_POSITIONS[key];
             map[layer][row][col] = LAYERS[layer][key];
             key += 1;
         }
         layer += 1;
+    }
+    if cfg!(feature = "iso") {
+        let mut layer = 0;
+        while layer < LAYERS.len() {
+            map[layer][3][11] = a!(No);
+            map[layer][6][17] = if layer == 0 { k!(NonusHash) } else { a!(Transparent) };
+            map[layer][7][17] = if layer == 0 {
+                k!(NonusBackslash)
+            } else {
+                a!(Transparent)
+            };
+            layer += 1;
+        }
     }
     map
 }
