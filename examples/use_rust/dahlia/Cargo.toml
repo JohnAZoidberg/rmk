@@ -12,6 +12,7 @@ bench = false
 [features]
 default = []
 iso = []
+allow-auto-update = []
 
 [dependencies]
 rmk = { path = "../../../rmk", default-features = false }

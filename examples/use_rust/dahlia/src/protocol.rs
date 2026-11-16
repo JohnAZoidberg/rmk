@@ -49,8 +49,8 @@ pub const HID_DESCRIPTOR: [u8; 30] = [
     0,
     FIRMWARE_VERSION as u8,
     (FIRMWARE_VERSION >> 8) as u8,
-    // Engineering firmware: ask BIOS to leave this image installed.
-    1,
+    // Engineering builds stay installed unless automatic updates are opted in.
+    (!cfg!(feature = "allow-auto-update")) as u8,
     0,
     0,
     0,
@@ -89,6 +89,7 @@ pub struct Protocol {
     pub leds: u8,
     pub fn_lock: bool,
     pub fn_active: bool,
+    update_protect: bool,
     pub fn_ctrl_swap: bool,
     queue: [Packet; QUEUE_SIZE],
     head: usize,
@@ -130,6 +131,7 @@ impl Protocol {
             leds: 0,
             fn_lock: false,
             fn_active: false,
+            update_protect: HID_DESCRIPTOR[26] != 0,
             fn_ctrl_swap: false,
             queue: [EMPTY; QUEUE_SIZE],
             head: 0,
@@ -168,10 +170,15 @@ impl Protocol {
         self.trace_event = [row, col, u8::from(pressed)];
     }
 
+    /// Stock misc-flags slot 0 is set only when its entire doubleword is zero.
+    pub fn configure_update_protection(&mut self, slot: [u8; 8]) {
+        self.update_protect = HID_DESCRIPTOR[26] != 0 || slot == [0; 8];
+    }
+
     pub fn flags(&self) -> u32 {
         u32::from(self.fn_lock)
             | (u32::from(self.fn_ctrl_swap) << 1)
-            | (u32::from(HID_DESCRIPTOR[26] & 1 != 0) << 2)
+            | (u32::from(self.update_protect) << 2)
             | (u32::from(self.caps_lock_led()) << 3)
     }
 
@@ -418,6 +425,9 @@ impl Protocol {
         };
         self.response_len = bytes.len();
         self.response[..bytes.len()].copy_from_slice(bytes);
+        if self.register == 1 {
+            self.response[26] = u8::from(self.update_protect);
+        }
     }
 
     pub fn finish_read(&mut self, transferred: usize) -> bool {
@@ -487,6 +497,19 @@ mod tests {
         p.enqueue(t);
         write(&mut p, 0x38, &[7, 5]);
         assert!(p.touchpad(), "EC controls override the local shortcut");
+    }
+
+    #[test]
+    fn update_protection_slot_and_build_policy_match_descriptor_and_flags() {
+        for slot in [[255; 8], [0; 8], [1, 0, 0, 0, 0, 0, 0, 0]] {
+            let mut p = Protocol::new();
+            p.configure_update_protection(slot);
+            let protected = !cfg!(feature = "allow-auto-update") || slot == [0; 8];
+            write(&mut p, 0x15, &[1, 0]);
+            p.start_read(0x15);
+            assert_eq!(p.response[26], u8::from(protected));
+            assert_eq!(p.flags() & 4 != 0, protected);
+        }
     }
 
     #[test]
@@ -747,6 +770,7 @@ mod vendor_tests {
     #[test]
     fn swap_commands_round_trip_and_reject_missing_value() {
         let mut p = Protocol::new();
+        p.configure_update_protection([0; 8]);
         write(&mut p, &[6, 0, 5, 0, 0x20, 0x10, 1]);
         assert!(p.fn_ctrl_swap);
         request(&mut p, 0x11);
@@ -764,6 +788,7 @@ mod vendor_tests {
     #[test]
     fn masked_flags_preserve_other_bits_and_reject_read_only_bits_atomically() {
         let mut p = Protocol::new();
+        p.configure_update_protection([0; 8]);
         write(&mut p, &[4, 0, 4, 0, 1, 2]);
         for (mask, value, expected, status) in [
             (1u32, 1u32, 13, 0),
@@ -792,6 +817,7 @@ mod vendor_tests {
     #[test]
     fn framework_tool_firmware_query_returns_version_and_commit() {
         let mut p = Protocol::new();
+        p.configure_update_protection([0; 8]);
         request(&mut p, 1);
         read_reply(&mut p);
         assert_eq!(p.response_len, 16);
@@ -804,6 +830,7 @@ mod vendor_tests {
     #[test]
     fn hardware_query_returns_chip_memory_and_unique_id() {
         let mut p = Protocol::new();
+        p.configure_update_protection([0; 8]);
         p.hardware_info = [0x89, 0x04, 64, 0, 40, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
         request(&mut p, 2);
         read_reply(&mut p);
@@ -815,6 +842,7 @@ mod vendor_tests {
     #[test]
     fn key_and_led_transactions_between_vendor_set_and_get_preserve_reply() {
         let mut p = Protocol::new();
+        p.configure_update_protection([0; 8]);
         request(&mut p, 1);
         p.enqueue(Packet::new(1, &[2, 0, 0x1e, 0, 0, 0, 0, 0]));
         p.start_read(0x15);
@@ -833,6 +861,7 @@ mod vendor_tests {
     fn malformed_vendor_lengths_do_not_execute_or_redirect_input() {
         for length in [0, 3, 33, 35, 0xffff] {
             let mut p = Protocol::new();
+            p.configure_update_protection([0; 8]);
             request(&mut p, 1);
             let mut bytes = [0; 36];
             bytes[..6].copy_from_slice(&[6, 0, length as u8, (length >> 8) as u8, 0x20, 2]);
@@ -849,6 +878,7 @@ mod vendor_tests {
     #[test]
     fn flags_query_reports_capabilities_and_update_protection() {
         let mut p = Protocol::new();
+        p.configure_update_protection([0; 8]);
         request(&mut p, 0x13);
         read_reply(&mut p);
         assert_eq!(p.response_len, 17);
@@ -861,6 +891,7 @@ mod vendor_tests {
     #[test]
     fn unknown_vendor_command_is_reported_without_changing_input_or_leds() {
         let mut p = Protocol::new();
+        p.configure_update_protection([0; 8]);
         p.enqueue(Packet::new(1, &[2, 0, 0x1e, 0, 0, 0, 0, 0]));
         write(&mut p, &[4, 0, 4, 0, 1, 2]);
         request(&mut p, 0x99);

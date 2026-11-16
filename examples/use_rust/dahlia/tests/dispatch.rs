@@ -130,6 +130,7 @@ fn fn_lock_reporting_tracks_toggle_and_temporary_unlock() {
         let keymap = initialize_keymap(&mut data, &mut behavior, &positional).await;
         let mut keyboard = Keyboard::new(&keymap);
         let mut protocol = crate::protocol::Protocol::new();
+        protocol.configure_update_protection([0; 8]);
         rmk::state::set_usb_state(UsbState::Configured);
         for (row, col, pressed, locked) in [
             (0, 16, true, false), // Fn alone is momentary, not locked.

@@ -32,7 +32,11 @@ Backlight and Copilot actions are handled by the EC through F15/F16; airplane
 mode uses F17. Vial is omitted. The touchpad itself
 continues to use its existing host connection; this firmware controls its enable
 pin. The Caps Lock LED follows the host's state; it is not toggled locally.
-The descriptor's engineering-firmware flag asks the BIOS to preserve this image.
+By default the HID descriptor asks the BIOS to preserve this image. Building with
+`--features allow-auto-update` opts into BIOS replacement, unless stock's
+misc-flags slot 0 at `0x0800DFC0` is all zero. That flash slot protects the image
+regardless of build policy. `GET_FLAGS` and the descriptor report the same state;
+this flag does not block explicit EC flashing.
 
 ## Build
 

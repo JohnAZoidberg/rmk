@@ -33,6 +33,9 @@ pub fn init(
 ) {
     let mut protocol = Protocol::new();
     protocol.fn_lock = settings.fn_lock();
+    // The linker reserves stock's eight misc-flags slots immediately below NVS.
+    let slot = unsafe { core::ptr::read_volatile(0x0800_dfc0 as *const [u8; 8]) };
+    protocol.configure_update_protection(slot);
     // DBGMCU's ID register is only accessible while its clock is enabled.
     let debug_enabled = pac::RCC.dbgcfgr().read().dbgen();
     pac::RCC.dbgcfgr().modify(|w| w.set_dbgen(true));
