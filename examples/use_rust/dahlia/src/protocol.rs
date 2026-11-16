@@ -7,7 +7,7 @@ mod build_info {
 pub const FLAGS_PRESENT: u32 = 0x0f;
 pub const FLAGS_WRITABLE: u32 = 3;
 
-pub const FIRMWARE_VERSION: u16 = 0x0126;
+pub const FIRMWARE_VERSION: u16 = 0x0127;
 
 pub const REPORT_DESCRIPTOR: &[u8] = &[
     // Keyboard, report 1: modifiers, reserved byte, six keycodes; LED output.
@@ -515,7 +515,7 @@ mod tests {
     #[test]
     fn descriptors_match_wire_lengths_and_board_identity() {
         assert_eq!(HID_DESCRIPTOR[4] as usize, REPORT_DESCRIPTOR.len());
-        assert_eq!(&HID_DESCRIPTOR[20..26], &[0xac, 0x32, 0x38, 0, 0x26, 1]);
+        assert_eq!(&HID_DESCRIPTOR[20..26], &[0xac, 0x32, 0x38, 0, 0x27, 1]);
         let mut p = Protocol::new();
         write(&mut p, 0x15, &[1, 0]);
         p.start_read(0x15);

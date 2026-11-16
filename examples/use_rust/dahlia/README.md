@@ -1,7 +1,7 @@
 # Dahlia (Framework 12 ANSI / ISO)
 
-Minimal RMK firmware for the **DVT/MP Dahlia touchpad module**, STM32U073C8.
-The matrix pins and key positions come from the Dahlia/Framework 12 ANSI
+RMK firmware for the **DVT/MP Dahlia touchpad module**, STM32U073C8.
+The matrix pins and key positions come from the Dahlia/Framework 12 ANSI/ISO
 ZMK board files. The EVT pinout is not supported. ANSI is the default; build with
 `--features iso` for the stock ISO matrix and extra keys.
 
@@ -32,9 +32,8 @@ Implemented:
   keyboard/media state so a slow EC cannot cause stale typing to replay.
 
 Backlight and Copilot actions are handled by the EC through F15/F16; airplane
-mode uses F17. Vial is omitted. The touchpad itself
-continues to use its existing host connection; this firmware controls its enable
-pin. The Caps Lock LED follows the host's state; it is not toggled locally.
+mode uses F17. Vial is omitted. The touchpad itself continues to use its existing host connection; this firmware controls its enable
+pin. The Caps Lock LED follows the host unless a retained fault is being signaled.
 By default the HID descriptor asks the BIOS to preserve this image. Building with
 `--features allow-auto-update` opts into BIOS replacement, unless stock's
 misc-flags slot 0 at `0x0800DFC0` is all zero. That flash slot protects the image
@@ -72,7 +71,7 @@ sudo ./target/debug/framework_tool --flash-stm32-kbd /path/to/rmk/examples/use_r
 sudo ./target/debug/framework_tool --stm32-kbd-info
 ```
 
-The firmware reports version 1.2.6 and the first eight bytes of the RMK Git
+The firmware reports version 1.2.7 and the first eight bytes of the RMK Git
 commit. The dirty flag indicates local changes at build time. Unknown vendor
 commands return `0xff`. Vendor commands `0x10`/`0x11` set/read Fn/Ctrl swap;
 `0x12`/`0x13` write/read flags. Bits 0 (Fn Lock) and 1 (swap) are writable;
@@ -104,12 +103,15 @@ Inside the Nix shell, from this directory:
 
 ```sh
 cargo nextest run --lib --target x86_64-unknown-linux-gnu
+cargo nextest run --lib --target x86_64-unknown-linux-gnu --features iso,allow-auto-update
 ```
 
 These tests exercise the production dispatch path (immediate key reports and Fn
 layer release), HID descriptors, slow-host coalescing, partial reads, reset
-resynchronization, vendor info transactions, IT8801 controls, and ghost rectangles
-without an MCU.
+resynchronization, vendor settings and info transactions, IT8801 controls, touchpad
+shortcuts, ISO keys, persistent Fn Lock, flash-log rotation, and ghost rectangles
+without an MCU. MCU-only fault and option-byte paths require the hardware checks
+below.
 
 ## Fault diagnostics
 
@@ -126,3 +128,45 @@ boots blink the fault pattern without faulting again. Read the nine words over
 SWD, then restore a normal build. With backup-domain access enabled, clear BKP0R
 and reset to restore the normal Caps Lock LED. The `fault-test` build faults again
 if its record is cleared.
+
+## Hardware acceptance checklist
+
+Use the normal ANSI image first; use the ISO image only with an ISO keyboard.
+The EC flashing tool mass-erases the controller, so flashing clears saved Fn Lock
+and misc-flags. Test persistence with a reset or deck power cycle, without
+reflashing between checks.
+
+1. Flash the normal image and run `framework_tool --stm32-kbd-info`. Expect
+   version 1.2.7, the build's commit hash, chip ID `0x0489`, 64 KiB flash,
+   40 KiB RAM, and do-not-update enabled. Check typing and modifier chords.
+2. Toggle Fn Lock with Fn+Esc, confirm the reported state, then run
+   `framework_tool --stm32-kbd-reset`. Confirm Fn Lock remains on and one
+   Fn+Esc chord turns it off. Repeat with a full deck power cycle.
+3. Run `framework_tool --stm32-kbd-fn-lock on`, confirm the function row changes
+   and `--stm32-kbd-info` reports it. Repeat `on`, reset, then test `off`.
+   Fn Lock must not change Space/Delete behavior without Fn held.
+4. Change the BIOS Fn/Ctrl swap setting and let the deck re-enumerate. Confirm
+   the physical keys exchange roles, including Fn+Esc and Fn while locked.
+   Confirm `--stm32-kbd-info` reports the new swap state. Restore the BIOS setting.
+5. Check Caps Lock's LED and reported state. Verify media/brightness keys, the
+   media-launch key (`0x0183`), Fn+F12, and Fn+K/P/B. Check Fn+Space backlight,
+   Fn+Right Ctrl Copilot, and the airplane key through the EC.
+6. Press Fn+Left Alt+T twice. Only the touchpad should toggle; typing continues.
+   Hold T and change other keys to confirm it does not toggle repeatedly.
+   Check lid/tablet/suspend controls still disable and restore the deck correctly,
+   including while keys are held.
+7. With an ISO keyboard and `--features iso`, check the extra key beside Left
+   Shift and the key beside Enter, on base/Fn/Fn Lock/temporary-unlock layers.
+8. On a fresh controller, watch for the three option-setup flashes. Power-cycle,
+   then use `framework_tool --stm32-kbd-identify` to exercise ROM bootloader entry
+   and return to normal typing. A controller previously running stock may already
+   have `nBOOT_SEL` cleared and will skip the startup flashes.
+9. To test flash-slot protection, build with `--features allow-auto-update`.
+   Flash normally and expect do-not-update off. Reflash with
+   `--stm32-kbd-update-protect` and expect it on. Restore the normal protected build.
+10. With SWD available, use the `fault-test` build and the fault-diagnostics steps
+    above. Verify one reset, the retained PC/ICSR, the three-short/one-long LED
+    pattern, and continued typing. Restore a normal build and clear the record.
+
+Commands above require the same privileges as the flashing command. Record which
+checks passed on physical hardware separately from the host-test results.

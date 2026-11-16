@@ -53,8 +53,9 @@ impl<F: NorFlash> Settings<F> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use embedded_storage::nor_flash::{ErrorType, ReadNorFlash};
+
+    use super::*;
 
     struct Flash {
         bytes: [u8; 8192],
