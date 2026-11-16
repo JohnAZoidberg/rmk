@@ -2,6 +2,7 @@
 #![no_main]
 
 mod boot;
+mod fault;
 mod i2c;
 mod matrix;
 
@@ -9,7 +10,6 @@ use embassy_executor::Spawner;
 use embassy_stm32::gpio::{Flex, Input, Level, Output, OutputOpenDrain, Pull, Speed};
 use embassy_stm32::i2c::I2c;
 use embassy_stm32::{Config, rcc};
-use panic_halt as _;
 use rmk::config::{BehaviorConfig, PositionalConfig};
 use rmk::keyboard::Keyboard;
 use rmk::types::connection::UsbState;
@@ -25,6 +25,11 @@ async fn main(_spawner: Spawner) {
     let p = embassy_stm32::init(config);
     let mut caps_led = Output::new(p.PC13, Level::Low, Speed::Low);
     boot::enable_boot0(&mut caps_led);
+    let fault_present = fault::present();
+    #[cfg(feature = "fault-test")]
+    if !fault_present {
+        cortex_m::asm::udf();
+    }
 
     // Embassy configures the clocks and alternate-function pins; the board's
     // interrupt handler owns the peripheral from here on.
@@ -34,6 +39,7 @@ async fn main(_spawner: Spawner) {
         OutputOpenDrain::new(p.PA12, Level::High, Speed::VeryHigh),
         Output::new(p.PA15, Level::High, Speed::Low),
         caps_led,
+        fault_present,
         rmk_dahlia::settings::Settings::new(embassy_stm32::flash::Flash::new_blocking(p.FLASH)).unwrap(),
     );
 

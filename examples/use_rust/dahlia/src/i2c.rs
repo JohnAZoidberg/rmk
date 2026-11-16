@@ -17,6 +17,7 @@ struct Bus {
     irq: OutputOpenDrain<'static>,
     touchpad: Output<'static>,
     caps_led: Output<'static>,
+    fault_present: bool,
     writing: bool,
     reading: bool,
     sent: usize,
@@ -29,6 +30,7 @@ pub fn init(
     irq: OutputOpenDrain<'static>,
     touchpad: Output<'static>,
     caps_led: Output<'static>,
+    fault_present: bool,
     settings: Settings<Flash<'static, Blocking>>,
 ) {
     let mut protocol = Protocol::new();
@@ -55,6 +57,7 @@ pub fn init(
             irq,
             touchpad,
             caps_led,
+            fault_present,
             writing: false,
             reading: false,
             sent: 0,
@@ -137,11 +140,13 @@ impl Bus {
             } else {
                 Level::Low
             });
-            self.caps_led.set_level(if self.protocol.caps_lock_led() {
-                Level::High
-            } else {
-                Level::Low
-            });
+            if !self.fault_present {
+                self.caps_led.set_level(if self.protocol.caps_lock_led() {
+                    Level::High
+                } else {
+                    Level::Low
+                });
+            }
             self.writing = false;
         }
     }
@@ -259,6 +264,11 @@ pub async fn run() -> ! {
         critical_section::with(|cs| {
             let mut guard = BUS.borrow(cs).borrow_mut();
             let bus = guard.as_mut().unwrap();
+            if bus.fault_present {
+                let phase = Instant::now().as_millis() % 2520;
+                let on = matches!(phase, 0..120 | 240..360 | 480..600 | 1020..1620);
+                bus.caps_led.set_level(if on { Level::High } else { Level::Low });
+            }
             if bus.protocol.pending() && !bus.reading && Instant::now() >= bus.rearm_at {
                 bus.irq.set_low();
             }

@@ -25,6 +25,9 @@ Implemented:
 - Fresh controllers clear `nBOOT_SEL` so the EC can enter the STM32 ROM
   bootloader via BOOT0 on subsequent power cycles. Three startup LED flashes
   indicate option-byte setup; five/seven/nine further flashes indicate failure.
+- HardFault and panic capture in TAMP backup registers, followed by reset. A
+  retained record overrides the Caps Lock LED with three short flashes and one
+  long flash while the keyboard continues operating.
 - HID reset and state resynchronization; pending reports track the latest
   keyboard/media state so a slow EC cannot cause stale typing to replay.
 
@@ -107,3 +110,19 @@ These tests exercise the production dispatch path (immediate key reports and Fn
 layer release), HID descriptors, slow-host coalescing, partial reads, reset
 resynchronization, vendor info transactions, IT8801 controls, and ghost rectangles
 without an MCU.
+
+## Fault diagnostics
+
+BKP0R..BKP8R at `0x4000B100..0x4000B120` retain the stock record layout:
+magic `0xDEADBEEF`, reason, PC, LR, xPSR, R0, R3, R12, and ICSR. RMK reason 1
+means HardFault; reason 2 means panic, whose exception-frame fields are zero.
+These are backup registers, not flash: retention is across software reset and
+depends on backup-domain power. The register offsets match the
+[STM32U073 CMSIS header](https://github.com/STMicroelectronics/cmsis-device-u0/blob/main/Include/stm32u073xx.h).
+
+Build with `--features fault-test` only for diagnostics. On its first boot with
+no retained record it executes UDF, captures the HardFault, and resets; subsequent
+boots blink the fault pattern without faulting again. Read the nine words over
+SWD, then restore a normal build. With backup-domain access enabled, clear BKP0R
+and reset to restore the normal Caps Lock LED. The `fault-test` build faults again
+if its record is cleared.
