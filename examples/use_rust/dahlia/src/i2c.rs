@@ -91,6 +91,10 @@ pub fn init(
     }
 }
 
+pub fn set_fn_active(active: bool) {
+    critical_section::with(|cs| BUS.borrow(cs).borrow_mut().as_mut().unwrap().protocol.fn_active = active);
+}
+
 pub fn fn_ctrl_swap() -> bool {
     critical_section::with(|cs| BUS.borrow(cs).borrow().as_ref().unwrap().protocol.fn_ctrl_swap)
 }
@@ -220,6 +224,11 @@ pub fn submit_report(report: Report) {
         let mut guard = BUS.borrow(cs).borrow_mut();
         let bus = guard.as_mut().unwrap();
         bus.protocol.enqueue(packet);
+        bus.touchpad.set_level(if bus.protocol.touchpad() {
+            Level::High
+        } else {
+            Level::Low
+        });
         if !bus.reading && Instant::now() >= bus.rearm_at {
             bus.irq.set_low();
         }

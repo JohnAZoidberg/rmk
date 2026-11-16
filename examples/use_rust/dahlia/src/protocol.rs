@@ -88,6 +88,7 @@ pub struct Protocol {
     pub sovr: [u8; 3],
     pub leds: u8,
     pub fn_lock: bool,
+    pub fn_active: bool,
     pub fn_ctrl_swap: bool,
     queue: [Packet; QUEUE_SIZE],
     head: usize,
@@ -128,6 +129,7 @@ impl Protocol {
             sovr: [255; 3],
             leds: 0,
             fn_lock: false,
+            fn_active: false,
             fn_ctrl_swap: false,
             queue: [EMPTY; QUEUE_SIZE],
             head: 0,
@@ -197,6 +199,14 @@ impl Protocol {
     pub fn enqueue(&mut self, packet: Packet) {
         match packet.bytes[2] {
             1 => {
+                // Stock shortcut fires on a new T press, with Fn and Left Alt held.
+                if self.fn_active
+                    && packet.bytes[3] & 4 != 0
+                    && packet.bytes[5..11].contains(&0x17)
+                    && !self.keyboard.bytes[5..11].contains(&0x17)
+                {
+                    self.sovr[2] ^= 1;
+                }
                 self.keyboard = packet;
                 self.trace_counts[2] = self.trace_counts[2].wrapping_add(1);
             }
@@ -452,6 +462,33 @@ mod tests {
         }
         p.finish_write();
     }
+    #[test]
+    fn touchpad_shortcut_requires_fn_left_alt_and_a_new_t_press() {
+        let mut p = Protocol::new();
+        let t = Packet::new(1, &[4, 0, 0x17, 0, 0, 0, 0, 0]);
+        p.enqueue(t);
+        assert!(p.touchpad());
+        p.fn_active = true;
+        p.enqueue(t);
+        assert!(p.touchpad(), "holding T before Fn must not toggle");
+        p.enqueue(KEY_UP);
+        p.enqueue(Packet::new(1, &[0x40, 0, 0x17, 0, 0, 0, 0, 0]));
+        assert!(p.touchpad(), "Right Alt is not the stock shortcut");
+        p.enqueue(KEY_UP);
+        p.enqueue(t);
+        assert!(!p.touchpad());
+        assert!(p.scanning());
+        p.enqueue(t);
+        assert!(!p.touchpad(), "repeated reports must not toggle again");
+        p.enqueue(KEY_UP);
+        p.enqueue(t);
+        assert!(p.touchpad());
+        p.enqueue(KEY_UP);
+        p.enqueue(t);
+        write(&mut p, 0x38, &[7, 5]);
+        assert!(p.touchpad(), "EC controls override the local shortcut");
+    }
+
     #[test]
     fn descriptors_match_wire_lengths_and_board_identity() {
         assert_eq!(HID_DESCRIPTOR[4] as usize, REPORT_DESCRIPTOR.len());

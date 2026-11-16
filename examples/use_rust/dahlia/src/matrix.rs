@@ -56,6 +56,7 @@ pub async fn run(
                 let (row, col) = swap.position(row, col, pressed, i2c::fn_ctrl_swap());
                 let previous_lock = i2c::fn_lock();
                 keymap.set_layer_active(2, previous_lock);
+                i2c::set_fn_active(keymap.is_layer_active(1));
                 dispatch(
                     keyboard,
                     KeyboardEvent::key(row as u8, col as u8, pressed),

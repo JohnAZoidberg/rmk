@@ -19,14 +19,14 @@ Implemented:
 - BIOS Fn/Ctrl swap and masked vendor settings writes. Fn Lock, swap, update
   protection, and Caps Lock are queryable through vendor flags. Fn Lock survives
   power-off; Fn + Escape toggles it. Swap is reapplied by the EC at startup.
+- Fn + Left Alt + T toggles the touchpad enable pin without disabling scanning.
 - Media-launch key sends the stock consumer usage `0x0183`; Fn sends F12.
 - Caps Lock indicator on PC13, controlled by the EC's HID LED reports.
 - HID reset and state resynchronization; pending reports track the latest
   keyboard/media state so a slow EC cannot cause stale typing to replay.
 
 I²C firmware updates, backlighting,
-Vial and the board-specific touchpad shortcut
-are omitted. The touchpad itself
+Vial are omitted. The touchpad itself
 continues to use its existing host connection; this firmware controls its enable
 pin. The Caps Lock LED follows the host's state; it is not toggled locally.
 The descriptor's engineering-firmware flag asks the BIOS to preserve this image.
