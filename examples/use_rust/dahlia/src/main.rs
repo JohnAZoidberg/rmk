@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 
+mod boot;
 mod i2c;
 mod matrix;
 
@@ -22,6 +23,8 @@ async fn main(_spawner: Spawner) {
     config.rcc.msi = None;
     config.rcc.sys = rcc::Sysclk::HSI;
     let p = embassy_stm32::init(config);
+    let mut caps_led = Output::new(p.PC13, Level::Low, Speed::Low);
+    boot::enable_boot0(&mut caps_led);
 
     // Embassy configures the clocks and alternate-function pins; the board's
     // interrupt handler owns the peripheral from here on.
@@ -30,7 +33,7 @@ async fn main(_spawner: Spawner) {
     i2c::init(
         OutputOpenDrain::new(p.PA12, Level::High, Speed::VeryHigh),
         Output::new(p.PA15, Level::High, Speed::Low),
-        Output::new(p.PC13, Level::Low, Speed::Low),
+        caps_led,
         rmk_dahlia::settings::Settings::new(embassy_stm32::flash::Flash::new_blocking(p.FLASH)).unwrap(),
     );
 
