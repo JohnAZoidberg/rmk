@@ -12,6 +12,7 @@ pub async fn run(mut rows: [Input<'static>; 8], mut cols: [Flex<'static>; 18], k
     for pin in &mut cols {
         pin.set_as_input(Pull::None);
     }
+    let mut swap = crate::dispatch::FnCtrlSwap::default();
     let mut held = [[false; 18]; 8];
     let mut previous = [0u32; 8];
     let mut changed_at = [[Instant::now(); 18]; 8];
@@ -46,6 +47,7 @@ pub async fn run(mut rows: [Input<'static>; 8], mut cols: [Flex<'static>; 18], k
             {
                 held[row][col] = pressed;
                 i2c::note_event(row as u8, col as u8, pressed);
+                let (row, col) = swap.position(row, col, pressed, i2c::fn_ctrl_swap());
                 dispatch(
                     keyboard,
                     KeyboardEvent::key(row as u8, col as u8, pressed),

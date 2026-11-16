@@ -85,6 +85,7 @@ pub struct Protocol {
     pub sovr: [u8; 3],
     pub leds: u8,
     pub fn_lock: bool,
+    pub fn_ctrl_swap: bool,
     queue: [Packet; QUEUE_SIZE],
     head: usize,
     count: usize,
@@ -124,6 +125,7 @@ impl Protocol {
             sovr: [255; 3],
             leds: 0,
             fn_lock: false,
+            fn_ctrl_swap: false,
             queue: [EMPTY; QUEUE_SIZE],
             head: 0,
             count: 0,
@@ -271,6 +273,18 @@ impl Protocol {
                             2 => {
                                 self.vendor[5..23].copy_from_slice(&self.hardware_info);
                                 23
+                            }
+                            0x10 => {
+                                if length < 5 {
+                                    self.vendor[4] = 1;
+                                } else {
+                                    self.fn_ctrl_swap = self.write[6] != 0;
+                                }
+                                5
+                            }
+                            0x11 => {
+                                self.vendor[5] = u8::from(self.fn_ctrl_swap);
+                                6
                             }
                             0x13 => {
                                 // Fn Lock is supported for reporting only.
@@ -652,6 +666,23 @@ mod vendor_tests {
         write(p, &[5, 0, 0x3f, 2, 0x20, 6, 0]);
         write(p, &[6, 0]);
         p.start_read(0x15);
+    }
+
+    #[test]
+    fn swap_commands_round_trip_and_reject_missing_value() {
+        let mut p = Protocol::new();
+        write(&mut p, &[6, 0, 5, 0, 0x20, 0x10, 1]);
+        assert!(p.fn_ctrl_swap);
+        request(&mut p, 0x11);
+        read_reply(&mut p);
+        assert_eq!(&p.response[..6], &[6, 0, 0x20, 0x11, 0, 1]);
+        write(&mut p, &[6, 0, 4, 0, 0x20, 0x10]);
+        read_reply(&mut p);
+        assert_eq!(p.response[4], 1);
+        assert!(p.fn_ctrl_swap);
+        write(&mut p, &[6, 0, 5, 0, 0x20, 0x10, 0]);
+        assert!(!p.fn_ctrl_swap);
+        assert!(!Protocol::new().fn_ctrl_swap);
     }
 
     #[test]

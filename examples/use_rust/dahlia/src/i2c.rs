@@ -81,6 +81,10 @@ pub fn init(irq: OutputOpenDrain<'static>, touchpad: Output<'static>, caps_led: 
     }
 }
 
+pub fn fn_ctrl_swap() -> bool {
+    critical_section::with(|cs| BUS.borrow(cs).borrow().as_ref().unwrap().protocol.fn_ctrl_swap)
+}
+
 pub fn scanning() -> bool {
     critical_section::with(|cs| BUS.borrow(cs).borrow().as_ref().unwrap().protocol.scanning())
 }
