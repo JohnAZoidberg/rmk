@@ -8,20 +8,21 @@ Implemented:
 
 - 8 × 18 active-high matrix, 1 ms press / 5 ms release debounce, ghost suppression.
 - Inactive scan columns float to support chords on the diodeless membrane.
-- ANSI typing, media/brightness keys, Fn navigation, Fn lock (until power-off).
+- ANSI typing, media/brightness keys, Fn navigation, persistent Fn lock.
 - HID over I²C at `0x15`, IRQ on PA12 (open drain), PB6/PB7 at up to 1 MHz.
 - IT8801 identification/register emulation at `0x38`; SOVR(2) bit 0 controls
   touchpad enable (PA15), bit 2 controls keyboard scanning. Disabling scanning
   releases held keys.
 - Vendor firmware/hardware info (`framework_tool --stm32-kbd-info`), including
   the RMK Git commit, dirty-build flag, chip ID, memory sizes, and factory UID.
-- Read-only Fn Lock reporting through the vendor flags command, including while
-  Fn temporarily unlocks the function row. Toggle it with Fn + Escape.
+- BIOS Fn/Ctrl swap and masked vendor settings writes. Fn Lock, swap, update
+  protection, and Caps Lock are queryable through vendor flags. Fn Lock survives
+  power-off; Fn + Escape toggles it. Swap is reapplied by the EC at startup.
 - Caps Lock indicator on PC13, controlled by the EC's HID LED reports.
 - HID reset and state resynchronization; pending reports track the latest
   keyboard/media state so a slow EC cannot cause stale typing to replay.
 
-BIOS vendor settings, I²C firmware updates, persistent settings, backlighting,
+I²C firmware updates, backlighting,
 Vial, the dedicated media-launch key, and the board-specific touchpad shortcut
 are omitted. The touchpad itself
 continues to use its existing host connection; this firmware controls its enable
@@ -45,9 +46,10 @@ cargo objcopy --release --bin rmk-dahlia -- -O ihex dahlia.hex
 cargo objcopy --release --bin rmk-dahlia -- -O binary dahlia.bin
 ```
 
-The linker limits code to `0x08000000..0x0800DFBF`, preserving the ZMK layout's
-misc-flags and final 8 KiB storage area. SRAM is 40 KiB. This port does not read
-ZMK's stored settings.
+The linker limits code to `0x08000000..0x0800DFBF`, preserving the misc-flags
+area. SRAM is 40 KiB. Fn Lock uses an append-only log in the final 8 KiB,
+with one page erase per 256 changes and no writes for unchanged values.
+This replaces ZMK storage; existing ZMK settings are not imported.
 
 ## Flash and bring up
 
@@ -60,7 +62,10 @@ sudo ./target/debug/framework_tool --stm32-kbd-info
 
 The firmware reports version 1.2.6 and the first eight bytes of the RMK Git
 commit. The dirty flag indicates local changes at build time. Unknown vendor
-commands return `0xff`; BIOS configuration and flag writes remain unsupported.
+commands return `0xff`. Vendor commands `0x10`/`0x11` set/read Fn/Ctrl swap;
+`0x12`/`0x13` write/read flags. Bits 0 (Fn Lock) and 1 (swap) are writable;
+bits 2 (update protection) and 3 (Caps Lock) are read-only. Flash failures return
+status 2 and leave the requested settings unchanged.
 
 Alternatively, connect an SWD probe and run from this directory:
 

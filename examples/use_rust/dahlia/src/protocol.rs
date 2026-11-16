@@ -4,6 +4,9 @@ mod build_info {
     include!(concat!(env!("OUT_DIR"), "/build_info.rs"));
 }
 
+pub const FLAGS_PRESENT: u32 = 0x0f;
+pub const FLAGS_WRITABLE: u32 = 3;
+
 pub const FIRMWARE_VERSION: u16 = 0x0126;
 
 pub const REPORT_DESCRIPTOR: &[u8] = &[
@@ -163,6 +166,21 @@ impl Protocol {
         self.trace_event = [row, col, u8::from(pressed)];
     }
 
+    pub fn flags(&self) -> u32 {
+        u32::from(self.fn_lock)
+            | (u32::from(self.fn_ctrl_swap) << 1)
+            | (u32::from(HID_DESCRIPTOR[26] & 1 != 0) << 2)
+            | (u32::from(self.caps_lock_led()) << 3)
+    }
+
+    pub fn settings_failed(&mut self, previous_lock: bool, previous_swap: bool) {
+        self.fn_lock = previous_lock;
+        self.fn_ctrl_swap = previous_swap;
+        self.vendor[4] = 2;
+        let flags = self.flags();
+        self.vendor[5..9].copy_from_slice(&flags.to_le_bytes());
+    }
+
     pub fn pending(&self) -> bool {
         self.reset || self.count != 0
     }
@@ -286,11 +304,32 @@ impl Protocol {
                                 self.vendor[5] = u8::from(self.fn_ctrl_swap);
                                 6
                             }
+                            0x12 => {
+                                if length < 12 {
+                                    self.vendor[4] = 1;
+                                } else {
+                                    let mask = u32::from_le_bytes(self.write[6..10].try_into().unwrap());
+                                    let value = u32::from_le_bytes(self.write[10..14].try_into().unwrap());
+                                    if mask & !FLAGS_WRITABLE != 0 {
+                                        self.vendor[4] = 1;
+                                    } else {
+                                        if mask & 1 != 0 {
+                                            self.fn_lock = value & 1 != 0;
+                                        }
+                                        if mask & 2 != 0 {
+                                            self.fn_ctrl_swap = value & 2 != 0;
+                                        }
+                                    }
+                                }
+                                let flags = self.flags();
+                                self.vendor[5..9].copy_from_slice(&flags.to_le_bytes());
+                                9
+                            }
                             0x13 => {
-                                // Fn Lock is supported for reporting only.
-                                self.vendor[5..9].copy_from_slice(&1u32.to_le_bytes());
-                                self.vendor[9..13].copy_from_slice(&u32::from(self.fn_lock).to_le_bytes());
-                                // Writable mask remains zero.
+                                self.vendor[5..9].copy_from_slice(&FLAGS_PRESENT.to_le_bytes());
+                                let flags = self.flags();
+                                self.vendor[9..13].copy_from_slice(&flags.to_le_bytes());
+                                self.vendor[13..17].copy_from_slice(&FLAGS_WRITABLE.to_le_bytes());
                                 17
                             }
                             _ => {
@@ -686,6 +725,34 @@ mod vendor_tests {
     }
 
     #[test]
+    fn masked_flags_preserve_other_bits_and_reject_read_only_bits_atomically() {
+        let mut p = Protocol::new();
+        write(&mut p, &[4, 0, 4, 0, 1, 2]);
+        for (mask, value, expected, status) in [
+            (1u32, 1u32, 13, 0),
+            (2, 2, 15, 0),
+            (1, 0, 14, 0),
+            (5, 0, 14, 1),
+            (16, 16, 14, 1),
+        ] {
+            let mut bytes = [6, 0, 12, 0, 0x20, 0x12, 0, 0, 0, 0, 0, 0, 0, 0];
+            bytes[6..10].copy_from_slice(&mask.to_le_bytes());
+            bytes[10..14].copy_from_slice(&value.to_le_bytes());
+            write(&mut p, &bytes);
+            read_reply(&mut p);
+            assert_eq!(p.flags(), expected);
+            assert_eq!(p.response[4], status);
+        }
+        write(&mut p, &[6, 0, 4, 0, 0x20, 0x12]);
+        read_reply(&mut p);
+        assert_eq!(p.response[4], 1);
+        assert_eq!(p.flags(), 14);
+        p.settings_failed(true, false);
+        assert_eq!(p.flags(), 13);
+        assert_eq!(p.vendor[4], 2);
+    }
+
+    #[test]
     fn framework_tool_firmware_query_returns_version_and_commit() {
         let mut p = Protocol::new();
         request(&mut p, 1);
@@ -743,14 +810,14 @@ mod vendor_tests {
     }
 
     #[test]
-    fn flags_query_reports_fn_lock_as_read_only_and_off_at_boot() {
+    fn flags_query_reports_capabilities_and_update_protection() {
         let mut p = Protocol::new();
         request(&mut p, 0x13);
         read_reply(&mut p);
         assert_eq!(p.response_len, 17);
         assert_eq!(
             &p.response[..17],
-            &[17, 0, 0x20, 0x13, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            &[17, 0, 0x20, 0x13, 0, 15, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0]
         );
     }
 
@@ -759,9 +826,9 @@ mod vendor_tests {
         let mut p = Protocol::new();
         p.enqueue(Packet::new(1, &[2, 0, 0x1e, 0, 0, 0, 0, 0]));
         write(&mut p, &[4, 0, 4, 0, 1, 2]);
-        request(&mut p, 0x12);
+        request(&mut p, 0x99);
         read_reply(&mut p);
-        assert_eq!(&p.response[..5], &[5, 0, 0x20, 0x12, 0xff]);
+        assert_eq!(&p.response[..5], &[5, 0, 0x20, 0x99, 0xff]);
         assert!(!p.finish_read(17));
         assert!(p.pending());
         assert!(p.caps_lock_led());

@@ -8,7 +8,12 @@ use crate::ghost::ghosted;
 use crate::i2c;
 use crate::keymap::POSITIONS;
 
-pub async fn run(mut rows: [Input<'static>; 8], mut cols: [Flex<'static>; 18], keyboard: &mut Keyboard<'_>) -> ! {
+pub async fn run(
+    mut rows: [Input<'static>; 8],
+    mut cols: [Flex<'static>; 18],
+    keyboard: &mut Keyboard<'_>,
+    keymap: &rmk::keymap::KeyMap<'_>,
+) -> ! {
     for pin in &mut cols {
         pin.set_as_input(Pull::None);
     }
@@ -18,6 +23,7 @@ pub async fn run(mut rows: [Input<'static>; 8], mut cols: [Flex<'static>; 18], k
     let mut changed_at = [[Instant::now(); 18]; 8];
     let mut ticker = Ticker::every(Duration::from_millis(1));
     loop {
+        keymap.set_layer_active(2, i2c::fn_lock());
         let mut raw = [0u32; 8];
         if i2c::scanning() {
             for (col, pin) in cols.iter_mut().enumerate() {
@@ -48,12 +54,18 @@ pub async fn run(mut rows: [Input<'static>; 8], mut cols: [Flex<'static>; 18], k
                 held[row][col] = pressed;
                 i2c::note_event(row as u8, col as u8, pressed);
                 let (row, col) = swap.position(row, col, pressed, i2c::fn_ctrl_swap());
+                let previous_lock = i2c::fn_lock();
+                keymap.set_layer_active(2, previous_lock);
                 dispatch(
                     keyboard,
                     KeyboardEvent::key(row as u8, col as u8, pressed),
                     i2c::submit_report,
                 )
                 .await;
+                let locked = keymap.is_layer_active(2);
+                if locked != previous_lock && !i2c::save_fn_lock(locked) {
+                    keymap.set_layer_active(2, i2c::fn_lock());
+                }
             }
         }
         previous = raw;

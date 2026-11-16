@@ -1,16 +1,19 @@
 use core::cell::RefCell;
 
 use critical_section::Mutex;
+use embassy_stm32::flash::{Blocking, Flash};
 use embassy_stm32::gpio::{Level, Output, OutputOpenDrain};
 use embassy_stm32::interrupt::{self, InterruptExt};
 use embassy_stm32::pac;
 use embassy_time::{Duration, Instant, Timer};
 use rmk::hid::Report;
+use rmk_dahlia::settings::Settings;
 
 use crate::protocol::{Packet, Protocol};
 
 struct Bus {
     protocol: Protocol,
+    settings: Settings<Flash<'static, Blocking>>,
     irq: OutputOpenDrain<'static>,
     touchpad: Output<'static>,
     caps_led: Output<'static>,
@@ -22,8 +25,14 @@ struct Bus {
 
 static BUS: Mutex<RefCell<Option<Bus>>> = Mutex::new(RefCell::new(None));
 
-pub fn init(irq: OutputOpenDrain<'static>, touchpad: Output<'static>, caps_led: Output<'static>) {
+pub fn init(
+    irq: OutputOpenDrain<'static>,
+    touchpad: Output<'static>,
+    caps_led: Output<'static>,
+    settings: Settings<Flash<'static, Blocking>>,
+) {
     let mut protocol = Protocol::new();
+    protocol.fn_lock = settings.fn_lock();
     // DBGMCU's ID register is only accessible while its clock is enabled.
     let debug_enabled = pac::RCC.dbgcfgr().read().dbgen();
     pac::RCC.dbgcfgr().modify(|w| w.set_dbgen(true));
@@ -39,6 +48,7 @@ pub fn init(irq: OutputOpenDrain<'static>, touchpad: Output<'static>, caps_led: 
     critical_section::with(|cs| {
         *BUS.borrow(cs).borrow_mut() = Some(Bus {
             protocol,
+            settings,
             irq,
             touchpad,
             caps_led,
@@ -109,7 +119,12 @@ pub fn note_event(row: u8, col: u8, pressed: bool) {
 impl Bus {
     fn finish_write(&mut self) {
         if self.writing {
+            let previous_lock = self.protocol.fn_lock;
+            let previous_swap = self.protocol.fn_ctrl_swap;
             self.protocol.finish_write();
+            if self.protocol.fn_lock != previous_lock && self.settings.store(self.protocol.fn_lock).is_err() {
+                self.protocol.settings_failed(previous_lock, previous_swap);
+            }
             self.touchpad.set_level(if self.protocol.touchpad() {
                 Level::High
             } else {
@@ -211,12 +226,27 @@ pub fn submit_report(report: Report) {
     });
 }
 
-pub async fn run(keymap: &rmk::keymap::KeyMap<'_>) -> ! {
+pub fn fn_lock() -> bool {
+    critical_section::with(|cs| BUS.borrow(cs).borrow().as_ref().unwrap().protocol.fn_lock)
+}
+
+pub fn save_fn_lock(locked: bool) -> bool {
+    critical_section::with(|cs| {
+        let mut guard = BUS.borrow(cs).borrow_mut();
+        let bus = guard.as_mut().unwrap();
+        if bus.settings.store(locked).is_err() {
+            return false;
+        }
+        bus.protocol.fn_lock = locked;
+        true
+    })
+}
+
+pub async fn run() -> ! {
     loop {
         critical_section::with(|cs| {
             let mut guard = BUS.borrow(cs).borrow_mut();
             let bus = guard.as_mut().unwrap();
-            bus.protocol.fn_lock = keymap.is_layer_active(2);
             if bus.protocol.pending() && !bus.reading && Instant::now() >= bus.rearm_at {
                 bus.irq.set_low();
             }

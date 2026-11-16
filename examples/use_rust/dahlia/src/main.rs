@@ -31,6 +31,7 @@ async fn main(_spawner: Spawner) {
         OutputOpenDrain::new(p.PA12, Level::High, Speed::VeryHigh),
         Output::new(p.PA15, Level::High, Speed::Low),
         Output::new(p.PC13, Level::Low, Speed::Low),
+        rmk_dahlia::settings::Settings::new(embassy_stm32::flash::Flash::new_blocking(p.FLASH)).unwrap(),
     );
 
     let rows = [
@@ -67,9 +68,10 @@ async fn main(_spawner: Spawner) {
     let mut behavior = BehaviorConfig::default();
     let positional = PositionalConfig::default();
     let keymap = initialize_keymap(&mut data, &mut behavior, &positional).await;
+    keymap.set_layer_active(2, i2c::fn_lock());
     let mut keyboard = Keyboard::new(&keymap);
     // Reuse RMK's wired report queue; no USB peripheral is present on Dahlia.
     rmk::state::set_usb_state(UsbState::Configured);
     // This layout has plain keys and layer actions, with no timed behaviors.
-    embassy_futures::join::join(matrix::run(rows, cols, &mut keyboard), i2c::run(&keymap)).await;
+    embassy_futures::join::join(matrix::run(rows, cols, &mut keyboard, &keymap), i2c::run()).await;
 }

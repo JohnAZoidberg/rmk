@@ -614,6 +614,15 @@ impl<'a> KeyMap<'a> {
         self.inner.borrow().behavior.auto_mouse_layer.clone()
     }
 
+    /// Set a layer's activation state, for example when restoring a board setting.
+    pub fn set_layer_active(&self, layer_num: u8, active: bool) {
+        if active {
+            self.activate_layer_if_inactive(layer_num);
+        } else {
+            self.deactivate_layer_if_active(layer_num);
+        }
+    }
+
     /// Whether `layer_num` is set in the layer mask.
     ///
     /// Unlike [`Self::active_layer`] (which returns only the topmost), this

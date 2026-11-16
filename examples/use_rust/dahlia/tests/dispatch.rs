@@ -160,14 +160,32 @@ fn fn_lock_reporting_tracks_toggle_and_temporary_unlock() {
                 protocol.finish_write();
             }
             protocol.start_read(0x15);
-            assert_eq!(&protocol.response[..9], &[17, 0, 0x20, 0x13, 0, 1, 0, 0, 0]);
+            assert_eq!(&protocol.response[..9], &[17, 0, 0x20, 0x13, 0, 15, 0, 0, 0]);
             assert_eq!(
                 &protocol.response[9..13],
-                &u32::from(locked).to_le_bytes(),
+                &(u32::from(locked) | 4).to_le_bytes(),
                 "after ({row}, {col}), pressed={pressed}"
             );
-            assert_eq!(&protocol.response[13..17], &[0; 4]);
+            assert_eq!(&protocol.response[13..17], &[3, 0, 0, 0]);
             protocol.finish_read(17);
         }
+    });
+}
+
+#[test]
+fn restored_fn_lock_turns_off_with_one_chord() {
+    rmk::test_support::test_block_on(async {
+        let mut data = KeymapData::new(keymap::default_keymap());
+        let mut behavior = BehaviorConfig::default();
+        let positional = PositionalConfig::default();
+        let keymap = initialize_keymap(&mut data, &mut behavior, &positional).await;
+        keymap.set_layer_active(2, true);
+        assert!(keymap.is_layer_active(2));
+        let mut keyboard = Keyboard::new(&keymap);
+        for (row, col, pressed) in [(0, 16, true), (1, 1, true), (1, 1, false), (0, 16, false)] {
+            dispatch(&mut keyboard, KeyboardEvent::key(row, col, pressed), |_| {}).await;
+        }
+        assert!(!keymap.is_layer_active(2));
+        assert!(!keymap.is_layer_active(3));
     });
 }

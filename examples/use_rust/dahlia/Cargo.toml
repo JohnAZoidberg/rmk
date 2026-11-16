@@ -12,6 +12,7 @@ bench = false
 [dependencies]
 rmk = { path = "../../../rmk", default-features = false }
 embassy-futures = "0.1"
+embedded-storage = "0.3"
 embassy-time = { version = "0.5", features = ["tick-hz-1_000_000"] }
 
 [target.'cfg(target_os = "none")'.dependencies]
