@@ -21,7 +21,7 @@ pub const POSITIONS: [(usize, usize); 78] = [
 const LAYERS: [[KeyAction; 78]; 4] = [
     // Default
     [
-        k!(Escape), k!(AudioMute), k!(AudioVolDown), k!(AudioVolUp), k!(MediaPrevTrack), k!(MediaPlayPause), k!(MediaNextTrack), k!(BrightnessDown), k!(BrightnessUp), wm!(P, ModifierCombination::LGUI), k!(F17), k!(PrintScreen), a!(No), k!(Delete),
+        k!(Escape), k!(AudioMute), k!(AudioVolDown), k!(AudioVolUp), k!(MediaPrevTrack), k!(MediaPlayPause), k!(MediaNextTrack), k!(BrightnessDown), k!(BrightnessUp), wm!(P, ModifierCombination::LGUI), k!(F17), k!(PrintScreen), k!(ConsumerControlConfiguration), k!(Delete),
         k!(Grave), k!(Kc1), k!(Kc2), k!(Kc3), k!(Kc4), k!(Kc5), k!(Kc6), k!(Kc7), k!(Kc8), k!(Kc9), k!(Kc0), k!(Minus), k!(Equal), k!(Backspace),
         k!(Tab), k!(Q), k!(W), k!(E), k!(R), k!(T), k!(Y), k!(U), k!(I), k!(O), k!(P), k!(LeftBracket), k!(RightBracket), k!(Backslash),
         k!(CapsLock), k!(A), k!(S), k!(D), k!(F), k!(G), k!(H), k!(J), k!(K), k!(L), k!(Semicolon), k!(Quote), k!(Enter),
@@ -51,7 +51,7 @@ const LAYERS: [[KeyAction; 78]; 4] = [
     ],
     // Temporary Fn unlock
     [
-        tg!(2), k!(AudioMute), k!(AudioVolDown), k!(AudioVolUp), k!(MediaPrevTrack), k!(MediaPlayPause), k!(MediaNextTrack), k!(BrightnessDown), k!(BrightnessUp), wm!(P, ModifierCombination::LGUI), k!(F17), k!(PrintScreen), a!(No), k!(Insert),
+        tg!(2), k!(AudioMute), k!(AudioVolDown), k!(AudioVolUp), k!(MediaPrevTrack), k!(MediaPlayPause), k!(MediaNextTrack), k!(BrightnessDown), k!(BrightnessUp), wm!(P, ModifierCombination::LGUI), k!(F17), k!(PrintScreen), k!(ConsumerControlConfiguration), k!(Insert),
         a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent),
         a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent), k!(Pause), a!(Transparent), a!(Transparent), a!(Transparent),
         a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent), k!(ScrollLock), a!(Transparent), a!(Transparent), a!(Transparent), a!(Transparent),

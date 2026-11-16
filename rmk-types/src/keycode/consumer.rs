@@ -72,6 +72,7 @@ pub enum ConsumerKey {
     NextKeyboardLayoutSelect,
     DesktopShowAllWindows,
     AcSoftKeyLeft,
+    ConsumerControlConfiguration,
     Redo,
 }
 
@@ -99,6 +100,7 @@ impl From<u16> for ConsumerKey {
             0xE9 => Self::VolumeIncrement,
             0xEA => Self::VolumeDecrement,
             0xEB => Self::Reserved,
+            0x183 => Self::ConsumerControlConfiguration,
             0x18A => Self::Email,
             0x192 => Self::Calculator,
             0x194 => Self::LocalBrowser,
@@ -160,6 +162,7 @@ impl From<ConsumerKey> for u16 {
             ConsumerKey::VolumeIncrement => 0xE9,
             ConsumerKey::VolumeDecrement => 0xEA,
             ConsumerKey::Reserved => 0xEB,
+            ConsumerKey::ConsumerControlConfiguration => 0x183,
             ConsumerKey::Email => 0x18A,
             ConsumerKey::Calculator => 0x192,
             ConsumerKey::LocalBrowser => 0x194,
@@ -215,6 +218,7 @@ impl ConsumerKey {
             ConsumerKey::PlayPause => Some(HidKeyCode::MediaPlayPause),
             ConsumerKey::Record => Some(HidKeyCode::MediaSelect),
             ConsumerKey::Eject => Some(HidKeyCode::MediaEject),
+            ConsumerKey::ConsumerControlConfiguration => Some(HidKeyCode::ConsumerControlConfiguration),
             ConsumerKey::Email => Some(HidKeyCode::Mail),
             ConsumerKey::Calculator => Some(HidKeyCode::Calculator),
             ConsumerKey::LocalBrowser => Some(HidKeyCode::MyComputer),

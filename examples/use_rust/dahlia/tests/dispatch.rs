@@ -189,3 +189,45 @@ fn restored_fn_lock_turns_off_with_one_chord() {
         assert!(!keymap.is_layer_active(3));
     });
 }
+
+#[test]
+fn media_launch_sends_full_consumer_usage_and_fn_sends_f12() {
+    rmk::test_support::test_block_on(async {
+        let mut data = KeymapData::new(keymap::default_keymap());
+        let mut behavior = BehaviorConfig::default();
+        let positional = PositionalConfig::default();
+        let keymap = initialize_keymap(&mut data, &mut behavior, &positional).await;
+        let mut keyboard = Keyboard::new(&keymap);
+        rmk::state::set_usb_state(UsbState::Configured);
+        for locked in [false, true] {
+            keymap.set_layer_active(2, locked);
+            if locked {
+                dispatch(&mut keyboard, KeyboardEvent::key(0, 16, true), |_| {}).await;
+            }
+            for pressed in [true, false] {
+                let mut reports = 0;
+                dispatch(&mut keyboard, KeyboardEvent::key(1, 5, pressed), |report| {
+                    let Report::MediaKeyboardReport(report) = report else {
+                        panic!("expected media launch")
+                    };
+                    assert_eq!({ report.usage_id }, if pressed { 0x183 } else { 0 });
+                    reports += 1;
+                })
+                .await;
+                assert_eq!(reports, 1);
+            }
+            if locked {
+                dispatch(&mut keyboard, KeyboardEvent::key(0, 16, false), |_| {}).await;
+            }
+        }
+        keymap.set_layer_active(2, false);
+        dispatch(&mut keyboard, KeyboardEvent::key(0, 16, true), |_| {}).await;
+        dispatch(&mut keyboard, KeyboardEvent::key(1, 5, true), |report| {
+            let Report::KeyboardReport(report) = report else {
+                panic!("expected F12")
+            };
+            assert_eq!(report.keycodes[0], 0x45);
+        })
+        .await;
+    });
+}

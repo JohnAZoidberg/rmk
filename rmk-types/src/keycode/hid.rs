@@ -401,6 +401,7 @@ pub enum HidKeyCode {
     AcPaste = 0x00F0,
     AcFind = 0x00F1,
     NextKeyboardLayoutSelect = 0x00F2,
+    ConsumerControlConfiguration = 0x00F3,
 }
 
 impl HidKeyCode {
@@ -523,6 +524,7 @@ impl HidKeyCode {
             HidKeyCode::AcPaste => Some(ConsumerKey::Paste),
             HidKeyCode::AcFind => Some(ConsumerKey::Find),
             HidKeyCode::NextKeyboardLayoutSelect => Some(ConsumerKey::NextKeyboardLayoutSelect),
+            HidKeyCode::ConsumerControlConfiguration => Some(ConsumerKey::ConsumerControlConfiguration),
             _ => None,
         }
     }
